@@ -99,3 +99,37 @@ def append_steps(
         )
 
     db.commit()
+
+
+def get_run_for_owner(
+    db: Session,
+    *,
+    run_id: str,
+    owner_user_id: int,
+) -> AgentRun | None:
+    """Get one run only when it belongs to the authenticated user."""
+
+    return db.scalar(
+        select(AgentRun).where(
+            AgentRun.run_id == run_id,
+            AgentRun.owner_user_id == owner_user_id,
+        )
+    )
+
+
+def list_runs_for_owner(
+    db: Session,
+    *,
+    owner_user_id: int,
+    limit: int = 20,
+) -> list[AgentRun]:
+    """List recent runs for one authenticated user."""
+
+    return list(
+        db.scalars(
+            select(AgentRun)
+            .where(AgentRun.owner_user_id == owner_user_id)
+            .order_by(AgentRun.started_at.desc())
+            .limit(limit)
+        )
+    )

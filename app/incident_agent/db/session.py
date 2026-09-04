@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from ..core.config import get_settings
@@ -38,3 +38,10 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def check_database_connection() -> None:
+    """Open a short-lived connection for the database health endpoint."""
+
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))

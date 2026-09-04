@@ -1471,6 +1471,7 @@ step → observation → report → done/error
 - 阶段 1 已完成：独立 MySQL、SQLAlchemy 模型、Alembic 迁移和持久化基础；
 - 阶段 2 本地实现已完成：工具层、MockRagGateway、HttpRagGateway 和离线测试；
 - 阶段 2.5 已完成：正式代码按 core、db、models、schemas、services、graph 分层，导入路径和迁移配置已更新；
+- 阶段 2.6 已完成：FastAPI `app/main.py`、auth/incidents/runs routers、DevAtlas 鉴权代理、`/health` 和 `/health/db` 已实现，并在 8001 启动验证；
 - 阶段 2 真实联调待完成：需要启动 DevAtlas 并确认测试用户、JWT、知识库权限和 indexed 文档；
 - 真实联调完成后再进入阶段 3：LangGraph Agent 核心；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；
