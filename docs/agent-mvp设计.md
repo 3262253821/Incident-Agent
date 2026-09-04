@@ -1454,7 +1454,9 @@ step → observation → report → done/error
 - 先保留 stages 学习代码；
 - 阶段 0 已完成：正式目录、配置模板、输入/工具/报告契约和 AgentState；
 - 阶段 1 已完成：独立 MySQL、SQLAlchemy 模型、Alembic 迁移和持久化基础；
-- 下一步是阶段 2：工具层和 DevAtlas RAG 适配器；
+- 阶段 2 本地实现已完成：工具层、MockRagGateway、HttpRagGateway 和离线测试；
+- 阶段 2 真实联调待完成：需要启动 DevAtlas 并确认测试用户、JWT、知识库权限和 indexed 文档；
+- 真实联调完成后再进入阶段 3：LangGraph Agent 核心；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；
 - 最后完成真实联调、测试和交付。
 ```
@@ -1519,4 +1521,38 @@ Alembic upgrade head 通过
 Alembic check 通过，无待生成迁移
 创建、追加步骤、完成运行记录的冒烟测试通过
 临时测试记录已删除
+```
+
+### 阶段 2 实施记录
+
+本阶段拆为“本地实现”和“真实联调”两个验收点，真实联调未完成前不进入阶段 3。
+
+本地实现已创建或修改：
+
+```text
+E:\IncidentAgent\app\incident_agent\rag_client.py
+E:\IncidentAgent\app\incident_agent\tools.py
+E:\IncidentAgent\app\incident_agent\schemas.py
+E:\IncidentAgent\requirements.txt
+E:\IncidentAgent\tests\test_tools_adapters.py
+```
+
+本地验证结果：
+
+```text
+工具名称和统一 ToolResult 结构验证通过
+MockRagGateway 成功、空结果、超时和不可用模式验证通过
+工具参数错误和未知服务验证通过
+HTTP 错误码映射代码已实现
+阶段 2 离线测试：6 passed
+```
+
+真实联调前置条件：
+
+```text
+DevAtlas 后端运行在 127.0.0.1:8000
+存在可登录的测试用户
+测试用户拥有目标 knowledge_base_id
+知识库至少有一个 indexed 文档
+JWT 只在本机运行时提供，不写入 Agent 数据库和日志
 ```
