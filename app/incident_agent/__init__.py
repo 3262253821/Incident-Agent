@@ -1,0 +1,2 @@
+"""Incident Agent application package."""
+
