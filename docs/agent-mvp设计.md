@@ -1474,7 +1474,7 @@ step → observation → report → done/error
 - 阶段 2.6 已完成：FastAPI `app/main.py`、auth/incidents/runs routers、DevAtlas 鉴权代理、`/health` 和 `/health/db` 已实现，并在 8001 启动验证；
 - 阶段 2 真实联调已完成：知识库 `3` 的三个文档均为 `indexed`，已通过授权 Swagger 验证 `/search` 返回真实 sources metadata，联调结束后关闭 DevAtlas `8000`；
 - 阶段 3 已完成：正式 LangGraph 节点、条件路由、ToolNode、报告校验、工具失败降级和最大轮数保护已实现；固定 FakeModel 测试正常、多工具、工具失败、报告失败和循环上限；
-- 下一步：将 Graph 接入 `incidents/analyze` API，之后再接入真实 DeepSeek 模型；
+- Graph 已接入 `incidents/analyze` API：请求经鉴权后创建运行记录，执行 Graph 并保存 observations、steps、report 和状态；下一步进行真实 DeepSeek 联调；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；
 - 最后完成真实联调、测试和交付。
 ```

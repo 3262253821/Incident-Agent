@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi.testclient import TestClient
+from app.incident_agent.schemas.incident import RunResponse
 
 from app.incident_agent.dependencies import get_access_token, get_current_user
 from app.incident_agent.schemas.auth import UserPublic
@@ -48,7 +49,7 @@ def test_incident_contract_is_registered_and_requires_authentication():
     assert response.status_code == 401
 
 
-def test_incident_route_returns_explicit_not_implemented_until_graph_phase():
+def test_incident_route_executes_service_after_authentication(monkeypatch):
     user = UserPublic(
         id=1,
         username="test-user",
@@ -60,6 +61,23 @@ def test_incident_route_returns_explicit_not_implemented_until_graph_phase():
 
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_access_token] = lambda: "test-token"
+
+    def fake_execute_incident(db, *, user, request, access_token):
+        assert db is not None
+        assert user.id == 1
+        assert request.knowledge_base_id == 1
+        assert access_token == "test-token"
+        return RunResponse(
+            run_id="run-api-test",
+            status="completed",
+            observations=[],
+            steps=[],
+        )
+
+    monkeypatch.setattr(
+        "app.incident_agent.routers.incidents.execute_incident",
+        fake_execute_incident,
+    )
 
     try:
         response = client.post(
@@ -73,8 +91,8 @@ def test_incident_route_returns_explicit_not_implemented_until_graph_phase():
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 501
-    assert "LangGraph" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run-api-test"
 
 
 def test_database_health_endpoint_is_available():
@@ -82,4 +100,3 @@ def test_database_health_endpoint_is_available():
 
     assert response.status_code in (200, 503)
     assert response.json()["service"] == "incident-agent-db"
-
