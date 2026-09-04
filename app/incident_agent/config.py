@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
@@ -38,13 +40,15 @@ def load_settings() -> Settings:
 
     database_url = os.getenv("INCIDENT_DATABASE_URL")
     if not database_url:
+        db_user = quote_plus(_required_env("INCIDENT_DB_USER"))
+        db_password = quote_plus(_required_env("INCIDENT_DB_PASSWORD"))
+        db_name = quote_plus(_required_env("INCIDENT_DB_NAME"))
         database_url = (
             "mysql+pymysql://"
-            f"{_required_env('INCIDENT_DB_USER')}"
-            ":{_required_env('INCIDENT_DB_PASSWORD')}@"
+            f"{db_user}:{db_password}@"
             f"{os.getenv('INCIDENT_DB_HOST', '127.0.0.1')}"
             f":{os.getenv('INCIDENT_DB_PORT', '3306')}"
-            f"/{_required_env('INCIDENT_DB_NAME')}"
+            f"/{db_name}"
         )
 
     origins = os.getenv(
@@ -73,3 +77,9 @@ def load_settings() -> Settings:
         web_origins=tuple(origin.strip() for origin in origins.split(",") if origin.strip()),
     )
 
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return one cached settings object for the process."""
+
+    return load_settings()

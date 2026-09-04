@@ -1453,9 +1453,10 @@ step → observation → report → done/error
 - 按本文档创建正式 Incident Agent MVP；
 - 先保留 stages 学习代码；
 - 阶段 0 已完成：正式目录、配置模板、输入/工具/报告契约和 AgentState；
-- 下一步是阶段 1：创建独立 MySQL 数据库和运行记录持久化；
-- 后续按阶段逐步完成工具、Graph、API 和 Web UI；
-- 最后接入 DevAtlas 的纯检索接口并完成联调。
+- 阶段 1 已完成：独立 MySQL、SQLAlchemy 模型、Alembic 迁移和持久化基础；
+- 下一步是阶段 2：工具层和 DevAtlas RAG 适配器；
+- 后续按阶段逐步完成 Graph、API 和 Web UI；
+- 最后完成真实联调、测试和交付。
 ```
 
 ### 阶段 0 实施记录
@@ -1484,4 +1485,38 @@ Python compileall 通过
 未连接 MySQL
 未调用模型
 未读取或打印现有 .env 内容
+```
+
+### 阶段 1 实施记录
+
+已创建或修改：
+
+```text
+E:\IncidentAgent\app\incident_agent\db.py
+E:\IncidentAgent\app\incident_agent\models.py
+E:\IncidentAgent\app\incident_agent\storage.py
+E:\IncidentAgent\alembic.ini
+E:\IncidentAgent\migrations\env.py
+E:\IncidentAgent\migrations\script.py.mako
+E:\IncidentAgent\migrations\versions\20260904_0001_create_agent_run_tables.py
+E:\IncidentAgent\requirements.txt
+E:\IncidentAgent\app\incident_agent\config.py
+```
+
+数据库结果：
+
+```text
+数据库：incident_agent
+表：agent_runs、agent_steps、alembic_version
+迁移版本：20260904_0001（head）
+```
+
+验证结果：
+
+```text
+SQLAlchemy 模型导入通过
+Alembic upgrade head 通过
+Alembic check 通过，无待生成迁移
+创建、追加步骤、完成运行记录的冒烟测试通过
+临时测试记录已删除
 ```
