@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..core.config import get_settings
+from ..dependencies import get_current_user
 from ..schemas.auth import LoginRequest, TokenResponse, UserPublic
 from ..services.auth import DevAtlasAuthClient, DevAtlasAuthError
-from ..dependencies import get_current_user
-from fastapi import Depends
-
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

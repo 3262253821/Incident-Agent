@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
-from langchain_core.tools import BaseTool
 
+from ..services.rag_client import RagGateway
+from ..services.tools import build_tools
 from .nodes import (
     degrade_node,
     limit_node,
@@ -18,8 +20,6 @@ from .nodes import (
     route_after_observe,
 )
 from .state import AgentState
-from ..services.rag_client import RagGateway
-from ..services.tools import build_tools
 
 
 def build_graph(

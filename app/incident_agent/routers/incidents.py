@@ -5,12 +5,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_access_token, get_current_user
 from ..db.session import get_db
+from ..dependencies import get_access_token, get_current_user
 from ..schemas.auth import UserPublic
 from ..schemas.incident import IncidentAnalyzeRequest, RunResponse
 from ..services.incident import execute_incident
-
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
 

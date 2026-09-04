@@ -5,14 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Sequence
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import BaseTool
 from pydantic import ValidationError
 
 from ..schemas.incident import IncidentReport
 from ..schemas.tool import ToolResult
 from .state import AgentState
-
 
 REPORT_SYSTEM_PROMPT = """
 你是 Incident Agent 的结构化报告节点。

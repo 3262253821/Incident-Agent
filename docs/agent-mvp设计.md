@@ -1480,6 +1480,7 @@ step → observation → report → done/error
 - 阶段 5 Web Harness MVP 已完成：`web/` 使用 Vue 3 + TypeScript + Vite + Axios，提供登录、API 状态、故障输入、执行轨迹、观察结果、结构化报告和历史运行界面；已在 `5174` 构建并启动检查；
 - Web 前端分层已完成：`api`、`components`、`layouts`、`views`、`router`、`stores`、`types` 已拆分，`App.vue` 仅保留 `RouterView`；已安装 `vue-router` 和 `pinia` 并通过构建；
 - 本地启动辅助已完成：根目录 `One-click launch.bat` 通过 `scripts/start-devatlas.ps1`、`scripts/start-agent.ps1`、`scripts/start-web.ps1` 打开三个 PowerShell；端口已占用时跳过重复启动，约定端口仍为 `8000/8001/5174`；
+- 阶段 6 已完成：README、架构与演示、验收清单、简历项目描述和服务检查脚本已补齐；前端构建、后端测试、语法和迁移检查通过；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；
 - 最后完成真实联调、测试和交付。
 ```

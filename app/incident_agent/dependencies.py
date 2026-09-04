@@ -9,7 +9,6 @@ from .core.config import get_settings
 from .schemas.auth import UserPublic
 from .services.auth import DevAtlasAuthClient, DevAtlasAuthError
 
-
 bearer_scheme = HTTPBearer(auto_error=False)
 
 

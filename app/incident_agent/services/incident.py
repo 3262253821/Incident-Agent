@@ -18,7 +18,6 @@ from .llm import create_chat_model
 from .rag_client import HttpRagGateway, RagGateway
 from .storage import append_steps, create_run, finish_run
 
-
 AGENT_SYSTEM_PROMPT = """
 你是 Incident Agent 故障分析助手。
 请根据用户提供的故障标题和日志，选择合适的工具收集证据。

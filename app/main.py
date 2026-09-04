@@ -12,7 +12,6 @@ from .incident_agent.routers.auth import router as auth_router
 from .incident_agent.routers.incidents import router as incidents_router
 from .incident_agent.routers.runs import router as runs_router
 
-
 settings = get_settings()
 
 app = FastAPI(

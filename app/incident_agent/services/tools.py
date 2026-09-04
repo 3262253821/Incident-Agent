@@ -8,13 +8,13 @@ from typing import Any
 from langchain_core.tools import BaseTool, tool
 from pydantic import ValidationError
 
-from .rag_client import RagGateway, RagGatewayError
 from ..schemas.tool import (
     AnalyzeLogArgs,
     GetServiceStatusArgs,
     SearchKnowledgeArgs,
     ToolResult,
 )
+from .rag_client import RagGateway, RagGatewayError
 
 
 def analyze_log(log_text: str) -> dict[str, Any]:
