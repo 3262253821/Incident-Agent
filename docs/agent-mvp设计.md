@@ -1110,6 +1110,7 @@ Git
 
 - 报告 Prompt 要求只依据事实；
 - 报告必须保留来源引用；
+- 报告节点将已知工具名安全映射为业务证据来源（`analyze_log → fault_log`、`search_knowledge → knowledge_base`、`get_service_status → service_status`），未知来源不放宽通过；
 - 不允许无证据写成确定结论；
 - Pydantic 只校验结构，不能证明事实真实；
 - 真实引用由工具结果和后端 metadata 提供。
@@ -1474,7 +1475,8 @@ step → observation → report → done/error
 - 阶段 2.6 已完成：FastAPI `app/main.py`、auth/incidents/runs routers、DevAtlas 鉴权代理、`/health` 和 `/health/db` 已实现，并在 8001 启动验证；
 - 阶段 2 真实联调已完成：知识库 `3` 的三个文档均为 `indexed`，已通过授权 Swagger 验证 `/search` 返回真实 sources metadata，联调结束后关闭 DevAtlas `8000`；
 - 阶段 3 已完成：正式 LangGraph 节点、条件路由、ToolNode、报告校验、工具失败降级和最大轮数保护已实现；固定 FakeModel 测试正常、多工具、工具失败、报告失败和循环上限；
-- Graph 已接入 `incidents/analyze` API：请求经鉴权后创建运行记录，执行 Graph 并保存 observations、steps、report 和状态；下一步进行真实 DeepSeek 联调；
+- 阶段 3 报告校验修复已完成：处理真实运行中工具名与业务来源枚举不一致的问题，补充 Prompt 映射规则和白名单归一化测试；当前全量测试 `18 passed`；
+- Graph 已接入 `incidents/analyze` API：请求经鉴权后创建运行记录，执行 Graph 并保存 observations、steps、report 和状态；基础双服务联调已通过，下一步用本机 JWT 进行一次真实 DeepSeek 分析演示；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；
 - 最后完成真实联调、测试和交付。
 ```

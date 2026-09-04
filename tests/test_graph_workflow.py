@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.incident_agent.graph.state import AgentState
+from app.incident_agent.graph.nodes import parse_report
 from app.incident_agent.graph.workflow import build_graph
 from app.incident_agent.services.rag_client import MockRagGateway
 from app.incident_agent.services.tools import build_tools
@@ -97,6 +98,27 @@ def test_graph_normal_path_runs_tool_observe_and_report():
     assert result["report"]["category"] == "database"
     assert result["observations"][0]["tool_name"] == "analyze_log"
     assert any(step["node"] == "report" for step in result["steps"])
+
+
+def test_parse_report_maps_known_tool_names_to_business_sources():
+    raw_report = (
+        '{"summary":"已收集证据。","category":"database",'
+        '"evidence":['
+        '{"source":"analyze_log","detail":"日志命中超时。"},'
+        '{"source":"search_knowledge","detail":"知识库有相关手册。"},'
+        '{"source":"get_service_status","detail":"服务处于降级状态。"}],'
+        '"possible_causes":["数据库连接超时"],'
+        '"troubleshooting_steps":["检查数据库"],'
+        '"references":[],"confidence":"medium"}'
+    )
+
+    report = parse_report(raw_report)
+
+    assert [item.source for item in report.evidence] == [
+        "fault_log",
+        "knowledge_base",
+        "service_status",
+    ]
 
 
 def test_graph_executes_multiple_tool_calls_in_one_tool_node_turn():

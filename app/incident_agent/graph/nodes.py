@@ -24,7 +24,19 @@ troubleshooting_steps、references、confidence 字段。
 category 只能是 database、network、application、dependency、unknown。
 confidence 只能是 low、medium、high。
 evidence 必须是对象列表，每个对象必须有 source 和 detail。
+source 只能使用以下业务来源值，不能填写工具函数名：
+analyze_log → fault_log；search_knowledge → knowledge_base；
+get_service_status → service_status；工具失败 → tool_error。
 """.strip()
+
+
+EVIDENCE_SOURCE_ALIASES = {
+    "analyze_log": "fault_log",
+    "analyze_log_tool": "fault_log",
+    "search_knowledge": "knowledge_base",
+    "get_service_status": "service_status",
+    "get_service_status_tool": "service_status",
+}
 
 
 def _message_summary(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
@@ -58,6 +70,22 @@ def parse_report(raw_report: Any) -> IncidentReport:
     if not isinstance(raw_report, str):
         raw_report = json.dumps(raw_report, ensure_ascii=False)
     data = json.loads(raw_report)
+    if isinstance(data, dict) and isinstance(data.get("evidence"), list):
+        # 模型有时会把工具函数名当成业务来源；只归一化白名单别名，
+        # 其他值仍交给 Pydantic 拒绝，避免放宽证据来源约束。
+        normalized_evidence = []
+        for item in data["evidence"]:
+            if isinstance(item, dict):
+                normalized_item = dict(item)
+                source = normalized_item.get("source")
+                normalized_item["source"] = EVIDENCE_SOURCE_ALIASES.get(
+                    source,
+                    source,
+                )
+                normalized_evidence.append(normalized_item)
+            else:
+                normalized_evidence.append(item)
+        data = {**data, "evidence": normalized_evidence}
     return IncidentReport.model_validate(data)
 
 
@@ -274,4 +302,3 @@ def route_after_observe(state: AgentState) -> str:
     """Stop on the first failed tool result; otherwise ask the model again."""
 
     return "degrade" if state["status"] == "tool_failed" else "agent"
-
