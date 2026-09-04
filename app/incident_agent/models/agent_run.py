@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .db import Base
+from ..db.session import Base
 
 
 class AgentRun(Base):

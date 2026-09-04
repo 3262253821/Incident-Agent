@@ -1192,16 +1192,12 @@ E:\IncidentAgent
 ├── app\
 │   └── incident_agent\
 │       ├── __init__.py
-│       ├── main.py              # FastAPI 应用入口
-│       ├── config.py            # 集中配置
-│       ├── schemas.py           # 输入、工具、报告模型
-│       ├── state.py             # AgentState
-│       ├── graph.py             # LangGraph 构建
-│       ├── nodes.py             # agent、observe、report、degrade 节点
-│       ├── tools.py             # 三个工具适配器
-│       ├── rag_client.py        # DevAtlas HTTP 适配器
-│       ├── storage.py            # MySQL 运行记录
-│       └── auth.py               # Agent Web 鉴权和 Token 处理
+│       ├── core/config.py        # 集中配置
+│       ├── db/session.py         # 数据库会话和 ORM Base
+│       ├── models/agent_run.py   # AgentRun、AgentStep ORM
+│       ├── schemas/              # 输入、工具、报告和 RAG 契约
+│       ├── services/             # 存储、RAG 适配器和工具
+│       └── graph/state.py        # AgentState
 ├── migrations\                  # Agent MySQL Alembic 迁移
 ├── web\                         # Incident Agent Web UI
 ├── tests\                       # 正式项目测试
@@ -1227,13 +1223,15 @@ E:\IncidentAgent
 交付：
 
 ```text
-app/incident_agent/
+app/incident_agent/core/
+app/incident_agent/db/
+app/incident_agent/models/
+app/incident_agent/schemas/
+app/incident_agent/services/
+app/incident_agent/graph/
 web/
 migrations/
 tests/
-schemas.py
-state.py
-config.py
 .env.example
 ```
 
@@ -1266,6 +1264,23 @@ MockRagGateway
 ```
 
 验收：成功、空结果、401、404、503、超时和非法响应都有固定测试结果。
+
+### 阶段 2.5：正式代码分层迁移
+
+目标：在进入 LangGraph、API 和 Web 开发前，将阶段 0-2 的扁平模块迁移到职责清晰的包目录。
+
+已完成：
+
+```text
+core/config.py
+db/session.py
+models/agent_run.py
+schemas/incident.py、schemas/tool.py、schemas/rag.py
+services/storage.py、services/rag_client.py、services/tools.py
+graph/state.py
+```
+
+迁移只调整文件位置和导入路径，不改变工具协议、数据库表结构、Alembic 版本或业务行为。验收包括全量语法检查、阶段 2 测试和 `alembic check`。
 
 ### 阶段 3：LangGraph Agent 核心
 
@@ -1455,6 +1470,7 @@ step → observation → report → done/error
 - 阶段 0 已完成：正式目录、配置模板、输入/工具/报告契约和 AgentState；
 - 阶段 1 已完成：独立 MySQL、SQLAlchemy 模型、Alembic 迁移和持久化基础；
 - 阶段 2 本地实现已完成：工具层、MockRagGateway、HttpRagGateway 和离线测试；
+- 阶段 2.5 已完成：正式代码按 core、db、models、schemas、services、graph 分层，导入路径和迁移配置已更新；
 - 阶段 2 真实联调待完成：需要启动 DevAtlas 并确认测试用户、JWT、知识库权限和 indexed 文档；
 - 真实联调完成后再进入阶段 3：LangGraph Agent 核心；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；

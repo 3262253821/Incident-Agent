@@ -8,8 +8,8 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.incident_agent.config import get_settings
-from app.incident_agent.db import Base
+from app.incident_agent.core.config import get_settings
+from app.incident_agent.db.session import Base
 from app.incident_agent import models  # noqa: F401
 
 
@@ -62,4 +62,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

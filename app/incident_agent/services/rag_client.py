@@ -7,7 +7,7 @@ from typing import Protocol
 
 import httpx
 
-from .schemas import RagSearchResponse
+from ..schemas.rag import RagSearchResponse
 
 
 class RagGatewayError(Exception):
@@ -178,4 +178,3 @@ class MockRagGateway:
                 }
             ],
         )
-

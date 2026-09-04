@@ -9,7 +9,7 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import ValidationError
 
 from .rag_client import RagGateway, RagGatewayError
-from .schemas import (
+from ..schemas.tool import (
     AnalyzeLogArgs,
     GetServiceStatusArgs,
     SearchKnowledgeArgs,
