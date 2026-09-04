@@ -1477,6 +1477,8 @@ step → observation → report → done/error
 - 阶段 3 已完成：正式 LangGraph 节点、条件路由、ToolNode、报告校验、工具失败降级和最大轮数保护已实现；固定 FakeModel 测试正常、多工具、工具失败、报告失败和循环上限；
 - 阶段 3 报告校验修复已完成：处理真实运行中工具名与业务来源枚举不一致的问题，补充 Prompt 映射规则和白名单归一化测试；当前全量测试 `18 passed`；
 - Graph 已接入 `incidents/analyze` API：请求经鉴权后创建运行记录，执行 Graph 并保存 observations、steps、report 和状态；基础双服务联调已通过，下一步用本机 JWT 进行一次真实 DeepSeek 分析演示；
+- 阶段 5 Web Harness MVP 已完成：`web/` 使用 Vue 3 + TypeScript + Vite + Axios，提供登录、API 状态、故障输入、执行轨迹、观察结果、结构化报告和历史运行界面；已在 `5174` 构建并启动检查；
+- Web 前端分层已完成：`api`、`components`、`layouts`、`views`、`router`、`stores`、`types` 已拆分，`App.vue` 仅保留 `RouterView`；已安装 `vue-router` 和 `pinia` 并通过构建；
 - 后续按阶段逐步完成 Graph、API 和 Web UI；
 - 最后完成真实联调、测试和交付。
 ```
