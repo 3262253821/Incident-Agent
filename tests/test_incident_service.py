@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage
 from app.incident_agent.db.session import Base
 from app.incident_agent.schemas.auth import UserPublic
 from app.incident_agent.schemas.incident import IncidentAnalyzeRequest
+from app.incident_agent.services.authorizer import StaticKnowledgeBaseAuthorizer
 from app.incident_agent.services.incident import execute_incident
 from app.incident_agent.services.rag_client import MockRagGateway
 
@@ -81,6 +82,7 @@ def test_execute_incident_persists_graph_result():
             access_token="test-token",
             model=model,
             rag_gateway=MockRagGateway(),
+            knowledge_base_authorizer=StaticKnowledgeBaseAuthorizer(),
         )
 
         assert result.status == "completed"
@@ -144,6 +146,7 @@ def test_execute_incident_forwards_request_top_k_to_rag_gateway():
             access_token="test-token",
             model=model,
             rag_gateway=gateway,
+            knowledge_base_authorizer=StaticKnowledgeBaseAuthorizer(),
         )
 
     assert result.status == "completed"

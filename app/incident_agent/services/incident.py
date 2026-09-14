@@ -1,4 +1,4 @@
-"""Application service that executes and persists one Agent run."""
+﻿"""Application service that executes and persists one Agent run."""
 
 from __future__ import annotations
 
@@ -14,6 +14,11 @@ from ..graph.workflow import build_graph_with_gateway
 from ..models import AgentRun
 from ..schemas.auth import UserPublic
 from ..schemas.incident import IncidentAnalyzeRequest, RunResponse
+from .authorizer import (
+    HttpKnowledgeBaseAuthorizer,
+    KnowledgeBaseAuthorizationError,
+    KnowledgeBaseAuthorizer,
+)
 from .llm import create_chat_model
 from .rag_client import HttpRagGateway, RagGateway
 from .storage import append_steps, create_run, finish_run
@@ -25,6 +30,20 @@ AGENT_SYSTEM_PROMPT = """
 只能提供排查建议，不能执行命令、重启服务或修改生产配置。
 报告必须区分已观察事实、可能原因和建议，不得把推测写成确定根因。
 """.strip()
+
+
+class KnowledgeBaseAccessError(Exception):
+    """Raised when the requested knowledge base fails the pre-flight check.
+
+    Carries the safe, DevAtlas-shaped status code so the router can answer
+    without a run ever being created.
+    """
+
+    def __init__(self, exc: KnowledgeBaseAuthorizationError):
+        super().__init__(exc.message)
+        self.status_code = exc.status_code
+        self.error_code = exc.error_code
+        self.message = exc.message
 
 
 def _initial_state(
@@ -86,58 +105,87 @@ def execute_incident(
     settings: Settings | None = None,
     model: Any | None = None,
     rag_gateway: RagGateway | None = None,
+    knowledge_base_authorizer: KnowledgeBaseAuthorizer | None = None,
 ) -> RunResponse:
     """Run the Graph and persist both success and controlled failure states.
 
-    ``model`` and ``rag_gateway`` are injectable for deterministic tests. In
-    production they default to DeepSeek and the DevAtlas HTTP adapter.
+    ``model``, ``rag_gateway`` and ``knowledge_base_authorizer`` are injectable
+    for deterministic tests. In production they default to DeepSeek and the
+    DevAtlas HTTP adapters.
+
+    The knowledge-base ownership check runs *before* ``create_run``: a request
+    for a missing or foreign knowledge base must not leave a persisted run
+    behind, and it must not depend on the model deciding to call the retrieval
+    tool.
     """
 
     settings = settings or get_settings()
     effective_top_k = request.top_k or settings.default_top_k
-    run_id = str(uuid4())
-    run: AgentRun = create_run(
-        db,
-        run_id=run_id,
-        owner_user_id=user.id,
-        title=request.title,
-        input_content=request.content,
-        knowledge_base_id=request.knowledge_base_id,
-        model_name=settings.model,
-        max_iterations=settings.max_iterations,
-    )
 
+    owned_authorizer = knowledge_base_authorizer is None
+    authorizer: KnowledgeBaseAuthorizer = (
+        knowledge_base_authorizer
+        or HttpKnowledgeBaseAuthorizer(
+            settings.devatlas_base_url,
+            settings.devatlas_timeout_seconds,
+        )
+    )
+    run_id = str(uuid4())
     owned_gateway = rag_gateway is None
-    gateway = rag_gateway or HttpRagGateway(
-        settings.devatlas_base_url,
-        settings.devatlas_timeout_seconds,
-    )
-    state = _initial_state(
-        run_id=run_id,
-        user=user,
-        request=request,
-        top_k=effective_top_k,
-        max_iterations=settings.max_iterations,
-    )
+    gateway: RagGateway | None = None
 
     try:
-        graph = build_graph_with_gateway(
-            model=model or create_chat_model(settings),
-            rag_gateway=gateway,
+        try:
+            authorizer.ensure_access(
+                knowledge_base_id=request.knowledge_base_id,
+                access_token=access_token,
+            )
+        except KnowledgeBaseAuthorizationError as exc:
+            raise KnowledgeBaseAccessError(exc) from exc
+
+        run: AgentRun = create_run(
+            db,
+            run_id=run_id,
+            owner_user_id=user.id,
+            title=request.title,
+            input_content=request.content,
             knowledge_base_id=request.knowledge_base_id,
-            top_k=effective_top_k,
-            access_token=access_token,
+            model_name=settings.model,
             max_iterations=settings.max_iterations,
         )
-        final_state = graph.invoke(state)
-    except Exception:
-        final_state = {
-            **state,
-            "status": "degraded",
-            "error": "Agent 执行失败，请检查模型或外部服务状态",
-        }
+
+        gateway = rag_gateway or HttpRagGateway(
+            settings.devatlas_base_url,
+            settings.devatlas_timeout_seconds,
+        )
+        state = _initial_state(
+            run_id=run_id,
+            user=user,
+            request=request,
+            top_k=effective_top_k,
+            max_iterations=settings.max_iterations,
+        )
+
+        try:
+            graph = build_graph_with_gateway(
+                model=model or create_chat_model(settings),
+                rag_gateway=gateway,
+                knowledge_base_id=request.knowledge_base_id,
+                top_k=effective_top_k,
+                access_token=access_token,
+                max_iterations=settings.max_iterations,
+            )
+            final_state = graph.invoke(state)
+        except Exception:
+            final_state = {
+                **state,
+                "status": "degraded",
+                "error": "Agent 执行失败，请检查模型或外部服务状态",
+            }
     finally:
-        if owned_gateway and hasattr(gateway, "close"):
+        if owned_authorizer and hasattr(authorizer, "close"):
+            authorizer.close()
+        if owned_gateway and gateway is not None and hasattr(gateway, "close"):
             gateway.close()
 
     append_steps(db, run, final_state["steps"])

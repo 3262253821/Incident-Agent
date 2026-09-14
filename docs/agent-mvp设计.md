@@ -877,6 +877,19 @@ Authorization: Bearer <DevAtlas access token>
 
 Agent 不从请求体接收 `owner_id`。`knowledge_base_id` 的访问权限由 DevAtlas 根据 JWT 所属用户再次校验。
 
+强制预校验（已实现，不依赖模型行为）：
+
+```text
+Bearer 鉴权通过
+→ Agent 用同一 Token 调 DevAtlas GET /api/v1/knowledge-bases/{knowledge_base_id}
+→ DevAtlas 按 knowledge_base.id + owner_id 过滤，非本人或不存在统一返回 404
+→ 404 时 Agent 直接返回 404，且不创建任何 agent_runs 记录
+→ 401/403 返回 401；DevAtlas 不可达返回 503
+→ 校验通过后才 create_run 并进入 Graph
+```
+
+原因：此前授权依赖模型主动调用 `search_knowledge`。如果模型只调用日志分析或服务状态工具，Agent 全程不会向 DevAtlas 校验该知识库，未授权或不存在的 ID 仍会落库并完成分析。授权必须是请求入口的固定步骤，不能交给模型决策。
+
 请求：
 
 ```json

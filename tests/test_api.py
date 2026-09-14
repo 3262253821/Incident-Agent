@@ -62,7 +62,7 @@ def test_incident_route_executes_service_after_authentication(monkeypatch):
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_access_token] = lambda: "test-token"
 
-    def fake_execute_incident(db, *, user, request, access_token):
+    def fake_execute_incident(db, *, user, request, access_token, **kwargs):
         assert db is not None
         assert user.id == 1
         assert request.knowledge_base_id == 1

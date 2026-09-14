@@ -2,6 +2,7 @@
 
 from .auth import LoginRequest, TokenResponse, UserPublic
 from .incident import EvidenceItem, IncidentAnalyzeRequest, IncidentReport, RunResponse
+from .knowledge_base import RagKnowledgeBase
 from .rag import RagSearchResponse, RagSource
 from .tool import (
     AnalyzeLogArgs,
@@ -17,6 +18,7 @@ __all__ = [
     "IncidentAnalyzeRequest",
     "IncidentReport",
     "LoginRequest",
+    "RagKnowledgeBase",
     "RagSearchResponse",
     "RagSource",
     "RunResponse",
