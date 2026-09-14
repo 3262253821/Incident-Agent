@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..core.statuses import RunStatus
 from ..models import AgentRun, AgentStep
+from ..models.agent_run import utc_now
 
 # 一条 running 记录超过这个时长仍停留在 running，就认为执行它的进程已经中断。
 STALE_RUN_AFTER = timedelta(minutes=15)
@@ -66,7 +67,7 @@ def finish_run(
     run.report = report
     run.error = error
     run.degraded_summary = degraded_summary
-    run.completed_at = datetime.utcnow()
+    run.completed_at = utc_now()
     db.commit()
     db.refresh(run)
     return run
@@ -105,8 +106,15 @@ def append_steps(
         lock_statement = lock_statement.with_for_update()
     db.execute(lock_statement).scalar()
 
+    # 先让 run.steps 过期：如果调用方之前读过该关系，旧的 AgentStep 对象仍留在
+    # session 的 identity map 里；删除后用 SQLite 会复用自增主键，flush 新对象时
+    # 就会撞上这些残留身份，触发 "Identity map already had an identity" 警告。
+    db.expire(run, ["steps"])
+
     db.execute(
-        AgentStep.__table__.delete().where(AgentStep.run_id == run.id)
+        AgentStep.__table__.delete()
+        .where(AgentStep.run_id == run.id)
+        .execution_options(synchronize_session=False)
     )
 
     for index, step in enumerate(steps, start=1):

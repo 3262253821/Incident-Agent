@@ -40,9 +40,33 @@ from .evidence import (
     build_degraded_summary,
     verify_report_evidence,
 )
+from .report_json import parse_json_tolerantly
 from .state import AgentState
 
 _LOGGER = get_logger("graph")
+
+# 报告最多尝试几次（1 次原始 + 1 次受限修复），绝不无限重试。
+REPORT_MAX_ATTEMPTS = 2
+
+# 修复请求的指令：只要求改成合法 JSON，不允许放宽字段枚举约束。
+REPAIR_INSTRUCTION = (
+    "你上一次的输出无法通过校验。请只返回修正后的合法 JSON，"
+    "不要输出 Markdown 代码块、不要添加解释文字。"
+    "字段、枚举和 evidence 的结构要求与之前完全一致，不得放宽或省略任何字段。"
+)
+
+
+class _ReportUnrecoverable(Exception):
+    """Both the initial attempt and the bounded repair attempt failed."""
+
+    def __init__(
+        self,
+        decode_error: Exception | None,
+        validation_error: Exception | None,
+    ):
+        super().__init__("报告在允许的尝试次数内仍未通过校验")
+        self.decode_error = decode_error
+        self.validation_error = validation_error
 
 # Tool names used when summarizing step results.
 ANALYZE_LOG_TOOL = "analyze_log"
@@ -107,11 +131,16 @@ def _message_summary(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
 
 
 def parse_report(raw_report: Any) -> IncidentReport:
-    """Parse JSON and validate the final report contract."""
+    """Parse JSON and validate the final report contract.
+
+    Decoding is tolerant (fences, surrounding prose, trailing commas) because a
+    formatting slip should not cost the whole run; the *contract* validation
+    stays strict.
+    """
 
     if not isinstance(raw_report, str):
         raw_report = json.dumps(raw_report, ensure_ascii=False)
-    data = json.loads(raw_report)
+    data = parse_json_tolerantly(raw_report)
     if isinstance(data, dict) and isinstance(data.get("evidence"), list):
         # 模型有时会把工具函数名当成业务来源；只归一化白名单别名，
         # 其他值仍交给 Pydantic 拒绝，避免放宽证据来源约束。
@@ -167,7 +196,13 @@ def _unverified_summary(decision: VerificationDecision) -> str:
 
 
 def _redact_report(report: IncidentReport) -> dict[str, Any]:
-    """Mask credentials in every free-text field before persistence."""
+    """Mask credentials in every free-text field before persistence.
+
+    Returns a plain dict on purpose: the graph state is persisted into a JSON
+    column, so it must stay JSON-serialisable. The API layer re-validates the
+    dict into a model when building the response, which is also what keeps
+    Pydantic from warning about dict-typed nested fields.
+    """
 
     data = report.model_dump()
     return {
@@ -626,16 +661,72 @@ def make_report_node(
         ]
 
         steps = list(state["steps"])
+
+        # P1-2-1：首次校验失败后允许**一次**受限修复请求（绝不无限重试）。
+        # decode_error 只记录第一次失败，最终的外层 except 仍按它分类错误码。
+        report: IncidentReport | None = None
+        decode_error: json.JSONDecodeError | None = None
+        validation_error: Exception | None = None
+        first_output: str | None = None
+        attempts = 0
+
         try:
-            response = report_model.invoke(report_messages)
-            report = parse_report(response.content)
-        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:
+            for attempt in range(REPORT_MAX_ATTEMPTS):
+                attempts = attempt + 1
+                if attempt > 0:
+                    steps.append(
+                        {
+                            "iteration": state["iteration"],
+                            "node": "report",
+                            "action": "repair_report",
+                            "attempt": attempt,
+                            "status": StepStatus.FAILED,
+                            "error_code": StepErrorCode.INVALID_JSON,
+                        }
+                    )
+                    _LOGGER.warning(
+                        "报告校验失败，发起一次修复请求",
+                        extra={
+                            "run_id": state.get("run_id"),
+                            "node": "report",
+                            "iteration": state["iteration"],
+                            "attempt": attempt,
+                            "status": StepStatus.FAILED,
+                            "error_code": StepErrorCode.INVALID_JSON,
+                        },
+                    )
+                    # 把上一次的原始输出与校验错误交给模型自我修正。
+                    repair_messages = [
+                        *report_messages,
+                        AIMessage(content=first_output or "{}"),
+                        HumanMessage(content=REPAIR_INSTRUCTION),
+                    ]
+                    response = report_model.invoke(repair_messages)
+                else:
+                    response = report_model.invoke(report_messages)
+
+                if first_output is None:
+                    first_output = str(getattr(response, "content", "") or "")
+
+                try:
+                    report = parse_report(response.content)
+                    break
+                except json.JSONDecodeError as exc:
+                    if decode_error is None:
+                        decode_error = exc
+                except (ValidationError, TypeError, ValueError) as exc:
+                    if validation_error is None:
+                        validation_error = exc
+
+            if report is None:
+                raise _ReportUnrecoverable(decode_error, validation_error)
+        except _ReportUnrecoverable as exc:
             report_duration_ms = _elapsed_ms(started_at)
-            if isinstance(exc, json.JSONDecodeError):
-                error = f"报告不是合法 JSON：{exc}"
+            if exc.decode_error is not None:
+                error = f"报告不是合法 JSON：{exc.decode_error}"
                 error_code = StepErrorCode.INVALID_JSON
             else:
-                error = f"报告结构校验失败：{exc}"
+                error = f"报告结构校验失败：{exc.validation_error}"
                 error_code = StepErrorCode.INVALID_REPORT
             _LOGGER.warning(
                 "报告生成或校验失败",
@@ -644,6 +735,7 @@ def make_report_node(
                     "node": "report",
                     "iteration": state["iteration"],
                     "duration_ms": report_duration_ms,
+                    "attempts": attempts,
                     "status": StepStatus.FAILED,
                     "error_code": error_code,
                     "error": error,
@@ -654,6 +746,7 @@ def make_report_node(
                     "iteration": state["iteration"],
                     "node": "report",
                     "action": "validate_report",
+                    "attempts": attempts,
                     "status": StepStatus.FAILED,
                     "error_code": error_code,
                 }
@@ -675,6 +768,7 @@ def make_report_node(
                 "node": "report",
                 "action": "validate_report",
                 "duration_ms": _elapsed_ms(started_at),
+                "attempts": attempts,
                 "status": StepStatus.SUCCESS,
             }
         )

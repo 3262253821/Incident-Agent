@@ -23,6 +23,7 @@ class FakeModel:
 
     def __init__(self, responses):
         self.responses = list(responses)
+        self.last_response = None
         self.bound_tools = []
 
     def bind_tools(self, tools):
@@ -30,9 +31,14 @@ class FakeModel:
         return self
 
     def invoke(self, messages):
+        # P1-2-1 之后报告节点可能多调一次（修复重试）。响应耗尽时重复最后一个，
+        # 使"每次都返回非法内容"这类用例仍然表达同一个语义。
         if not self.responses:
-            raise AssertionError("FakeModel 没有预置更多响应")
+            if self.last_response is None:
+                raise AssertionError("FakeModel 没有预置任何响应")
+            return self.last_response
         response = self.responses.pop(0)
+        self.last_response = response
         return response
 
 

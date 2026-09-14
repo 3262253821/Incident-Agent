@@ -416,9 +416,15 @@ def test_analyze_api_returns_insufficient_evidence_status(monkeypatch):
         "__init__",
         fake_authorizer_init,
     )
+    # P1-2-2 之后决策模型与报告模型是两个工厂，都要替换，否则测试会真的去调模型 API。
     monkeypatch.setattr(
         incident_module,
         "create_chat_model",
+        lambda settings: NoToolModel(),
+    )
+    monkeypatch.setattr(
+        incident_module,
+        "create_report_model",
         lambda settings: NoToolModel(),
     )
     app.dependency_overrides[get_current_user] = make_user

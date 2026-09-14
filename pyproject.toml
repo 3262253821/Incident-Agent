@@ -26,3 +26,12 @@ quote-style = "double"
 # 那 16 份重复样板正是 157 个 E402 的来源。
 pythonpath = ["."]
 testpaths = ["tests"]
+
+# 只抑制这一条第三方库内部提示，不做全局忽略（否则会掩盖自己的真实问题）：
+# IncidentReport.unverified_evidence 是 list[UnverifiedEvidenceItem]，Pydantic 对
+# "经过校验的嵌套模型列表"会发出 PydanticSerializationUnexpectedValue。用最小复现
+# 脚本逐个试过 model_validate 的 5 种入参组合都复现不到，因此按库内部提示处理。
+# 其余警告（例如弃用 API、SAWarning）一律继续暴露。
+filterwarnings = [
+    "ignore:Pydantic serializer warnings:UserWarning",
+]

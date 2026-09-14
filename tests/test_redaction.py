@@ -497,6 +497,11 @@ def test_runs_endpoint_does_not_return_raw_credentials(monkeypatch):
         "create_chat_model",
         lambda settings: PatchedModel([]),
     )
+    monkeypatch.setattr(
+        incident_module,
+        "create_report_model",
+        lambda settings: PatchedModel([]),
+    )
 
     try:
         response = client.post(

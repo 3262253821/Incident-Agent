@@ -19,13 +19,18 @@ from ..graph.state import AgentState
 from ..graph.workflow import build_graph_with_gateway
 from ..models import AgentRun
 from ..schemas.auth import UserPublic
-from ..schemas.incident import IncidentAnalyzeRequest, RunResponse
+from ..schemas.incident import (
+    DegradedSummary,
+    IncidentAnalyzeRequest,
+    IncidentReport,
+    RunResponse,
+)
 from .authorizer import (
     HttpKnowledgeBaseAuthorizer,
     KnowledgeBaseAuthorizationError,
     KnowledgeBaseAuthorizer,
 )
-from .llm import create_chat_model
+from .llm import create_chat_model, create_report_model
 from .rag_client import HttpRagGateway, RagGateway
 from .storage import append_steps, create_run, finish_run
 
@@ -111,16 +116,26 @@ def _initial_state(
 
 
 def _response_from_state(state: AgentState) -> RunResponse:
-    """Convert the final graph state to the public API response."""
+    """Convert the final graph state to the public API response.
+
+    The graph keeps ``report`` and ``degraded_summary`` as plain dicts so they can
+    be stored in JSON columns; here they are re-validated into their models for
+    the typed API contract.
+    """
+
+    raw_report = state.get("report")
+    raw_summary = state.get("degraded_summary")
 
     return RunResponse(
         run_id=state["run_id"],
         status=state["status"],
-        report=state["report"],
+        report=IncidentReport.model_validate(raw_report) if raw_report else None,
         observations=state["observations"],
         steps=state["steps"],
         error=state["error"],
-        degraded_summary=state.get("degraded_summary"),
+        degraded_summary=(
+            DegradedSummary.model_validate(raw_summary) if raw_summary else None
+        ),
     )
 
 
@@ -132,6 +147,7 @@ def execute_incident(
     access_token: str,
     settings: Settings | None = None,
     model: Any | None = None,
+    report_model: Any | None = None,
     rag_gateway: RagGateway | None = None,
     knowledge_base_authorizer: KnowledgeBaseAuthorizer | None = None,
 ) -> RunResponse:
@@ -220,6 +236,10 @@ def execute_incident(
         try:
             graph = build_graph_with_gateway(
                 model=model or create_chat_model(settings),
+                report_model=(
+                    model if report_model is None and model is not None
+                    else report_model or create_report_model(settings)
+                ),
                 rag_gateway=gateway,
                 knowledge_base_id=request.knowledge_base_id,
                 top_k=effective_top_k,

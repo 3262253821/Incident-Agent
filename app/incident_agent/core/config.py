@@ -26,6 +26,11 @@ class Settings:
     default_top_k: int
     database_url: str
     web_origins: tuple[str, ...]
+    # 模型行为参数（P1-2-2）：集中在配置里，不在业务函数里写死字面量。
+    model_temperature: float = 0.1
+    model_max_tokens: int | None = None
+    model_max_retries: int = 0
+    report_model: str = "deepseek-chat"
 
 
 def _required_env(name: str) -> str:
@@ -33,6 +38,17 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"缺少必要环境变量：{name}")
     return value
+
+
+def _optional_int(raw: str | None) -> int | None:
+    """Parse an optional integer env var; empty or invalid means "unset"."""
+
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return None
 
 
 def load_settings() -> Settings:
@@ -85,6 +101,16 @@ def load_settings() -> Settings:
         default_top_k=int(os.getenv("INCIDENT_DEFAULT_TOP_K", "5")),
         database_url=database_url,
         web_origins=tuple(origin.strip() for origin in origins.split(",") if origin.strip()),
+        # 模型行为参数（P1-2-2）
+        model_temperature=float(
+            os.getenv("INCIDENT_AGENT_TEMPERATURE", "0.1")
+        ),
+        model_max_tokens=_optional_int(os.getenv("INCIDENT_AGENT_MAX_TOKENS")),
+        model_max_retries=int(os.getenv("INCIDENT_MODEL_MAX_RETRIES", "0")),
+        report_model=os.getenv(
+            "INCIDENT_AGENT_REPORT_MODEL",
+            os.getenv("INCIDENT_AGENT_MODEL", "deepseek-chat"),
+        ),
     )
 
 

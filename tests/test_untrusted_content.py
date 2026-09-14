@@ -21,7 +21,7 @@ from app.incident_agent.core.redaction import (
 )
 from app.incident_agent.graph.workflow import build_graph
 from app.incident_agent.schemas.auth import UserPublic
-from app.incident_agent.schemas.incident import IncidentAnalyzeRequest
+from app.incident_agent.schemas.incident import IncidentAnalyzeRequest, IncidentReport
 from app.incident_agent.schemas.rag import RagSearchResponse
 from app.incident_agent.services.incident import _initial_state
 from app.incident_agent.services.tools import build_tools
@@ -350,7 +350,8 @@ def test_evidence_sources_are_still_verified_despite_the_injection():
 
     # 伪造的那条被剔除，真实的那条留下且置信度被降为 low
     assert result["status"] == "completed"
-    assert len(result["report"]["evidence"]) == 1
-    assert result["report"]["evidence"][0]["document_id"] == 10
-    assert result["report"]["unverified_evidence"][0]["document_id"] == 999
-    assert result["report"]["confidence"] == "low"
+    report = IncidentReport.model_validate(result["report"])
+    assert report.unverified_evidence[0].document_id == 999
+    assert report.confidence == "low"
+    assert len(report.evidence) == 1
+    assert report.evidence[0].document_id == 10

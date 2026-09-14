@@ -2,13 +2,38 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db.session import Base
+
+
+def utc_now() -> datetime:
+    """Current UTC time as a naive datetime.
+
+    ``datetime.utcnow()`` is deprecated in Python 3.12+; this is the replacement
+    that keeps the same stored representation.
+
+    Why the columns stay timezone-naive instead of ``DateTime(timezone=True)``:
+
+    - MySQL's ``DATETIME`` does not store an offset, so a timezone-aware column
+      still comes back naive on a real deployment (measured, not assumed);
+    - SQLite (the test database) deserialises back as naive as well, even when
+      the column is declared with ``timezone=True``;
+    - ``timezone=True`` would only make SQLAlchemy emit offset-bearing literals
+      that MySQL then silently truncates.
+
+    So switching the column type would require a migration while changing
+    nothing about what is stored, and would make SQLAlchemy's own type contract
+    mismatch the database. Timestamps are therefore always written as **naive
+    UTC**, and every value that reaches the API is serialised as ISO 8601 with an
+    explicit ``+00:00`` / ``Z`` suffix at the schema boundary.
+    """
+
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class AgentRun(Base):
@@ -37,7 +62,7 @@ class AgentRun(Base):
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime,
@@ -92,7 +117,7 @@ class AgentStep(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
     )
 
     run: Mapped[AgentRun] = relationship(back_populates="steps")
