@@ -9,6 +9,20 @@ extend-exclude = [
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 
+[tool.ruff.lint.per-file-ignores]
+# stages/ 是学习练习（设计文档要求保留、不作为正式模块导入）。它的目录名
+# 形如 "L3-tools"、"L5-test"，不是合法 Python 包名，无法用 import 引用，
+# 只能靠 sys.path.insert 找到同级的 tools.py —— 这是学习代码的固有写法，
+# 不改写学习材料，只豁免 E402。
+"stages/**" = ["E402"]
+
+
 [tool.ruff.format]
 indent-style = "space"
 quote-style = "double"
+
+[tool.pytest.ini_options]
+# 把仓库根目录放到 sys.path，测试文件因此不需要再手工 sys.path.insert，
+# 那 16 份重复样板正是 157 个 E402 的来源。
+pythonpath = ["."]
+testpaths = ["tests"]

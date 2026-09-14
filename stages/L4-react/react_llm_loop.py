@@ -10,7 +10,6 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
 # 练习目录名包含短横线，先把 L3-tools 加入导入路径。
 L3_TOOLS_DIR = Path(__file__).resolve().parents[1] / "L3-tools"
 
@@ -19,7 +18,6 @@ if str(L3_TOOLS_DIR) not in sys.path:
 
 from tools import run_tool  # noqa: E402
 
- 
 MAX_ITERATIONS = 4
 
 

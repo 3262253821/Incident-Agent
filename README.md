@@ -140,11 +140,10 @@ GET  /api/v1/runs/{run_id}
 
 ```powershell
 cd E:\IncidentAgent
-$env:PYTHONPATH="E:\IncidentAgent"
-py -m pytest tests -q
+py -m pytest tests -q                 # 不需要设置 PYTHONPATH：pyproject.toml 里已配 pythonpath
 py -m compileall -q app migrations tests
-alembic check          # 需要本机 MySQL（CI 中跳过，见下）
-ruff check app
+alembic check                         # 需要本机 MySQL（CI 中跳过，见下）
+ruff check .                          # 全仓检查
 ```
 
 前端构建：
@@ -170,7 +169,7 @@ py -m pip install -r requirements-dev.txt    # 测试与 lint（ruff、pytest）
 
 ```text
 后端：pip install -r requirements-lock.txt -r requirements-dev.txt
-      ruff check app / pytest -q / compileall / alembic heads
+      ruff check . / pytest -q / compileall / alembic heads
 前端：npm ci / npm run build（含 vue-tsc 类型检查）
 ```
 

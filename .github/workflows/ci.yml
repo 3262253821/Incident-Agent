@@ -40,8 +40,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt -r requirements-dev.txt
 
-      - name: 代码检查
-        run: ruff check app
+      - name: 代码检查（全仓）
+        run: ruff check .
 
       - name: 运行测试
         # 测试全部使用 SQLite 内存库，因此不需要 MySQL 服务

@@ -1,22 +1,12 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.incident_agent.graph.state import AgentState
 from app.incident_agent.graph.nodes import parse_report
+from app.incident_agent.graph.state import AgentState
 from app.incident_agent.graph.workflow import build_graph
 from app.incident_agent.services.rag_client import MockRagGateway
 from app.incident_agent.services.tools import build_tools
-
 
 VALID_REPORT = (
     '{"summary":"订单服务可能因数据库连接超时返回502。",'
@@ -66,6 +56,21 @@ def make_state(content: str = "订单服务返回502，MySQL连接超时") -> Ag
         "error": None,
         "report": None,
     }
+
+
+def repeated_call(call_id: str) -> AIMessage:
+    """Build an AIMessage that keeps asking for the same deterministic tool."""
+
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "analyze_log",
+                "args": {"log_text": "502"},
+                "id": call_id,
+            }
+        ],
+    )
 
 
 def test_graph_normal_path_runs_tool_observe_and_report():
@@ -204,16 +209,6 @@ def test_graph_marks_invalid_report_without_calling_tools_again():
 
 
 def test_graph_stops_at_max_model_iterations():
-    repeated_call = lambda call_id: AIMessage(
-        content="",
-        tool_calls=[
-            {
-                "name": "analyze_log",
-                "args": {"log_text": "502"},
-                "id": call_id,
-            }
-        ],
-    )
     agent_model = FakeModel([repeated_call("call-1"), repeated_call("call-2")])
     graph = build_graph(
         model=agent_model,

@@ -20,7 +20,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-
 L3_TOOLS_DIR = Path(__file__).resolve().parents[1] / "L3-tools"
 
 if str(L3_TOOLS_DIR) not in sys.path:
@@ -28,7 +27,6 @@ if str(L3_TOOLS_DIR) not in sys.path:
 
 from report_models import IncidentReport
 from tools import run_tool as run_l3_tool
-
 
 MAX_ITERATIONS = 4
 

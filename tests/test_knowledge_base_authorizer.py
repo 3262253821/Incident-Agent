@@ -8,20 +8,11 @@ before the check passes.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 import httpx
 import pytest
+from langchain_core.messages import AIMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-from langchain_core.messages import AIMessage
 
 from app.incident_agent.db.session import Base
 from app.incident_agent.models import AgentRun, AgentStep

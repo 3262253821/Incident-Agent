@@ -1,21 +1,11 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 from fastapi.testclient import TestClient
-from app.incident_agent.schemas.incident import RunResponse
 
 from app.incident_agent.dependencies import get_access_token, get_current_user
 from app.incident_agent.schemas.auth import UserPublic
+from app.incident_agent.schemas.incident import RunResponse
 from app.main import app
-
 
 client = TestClient(app)
 

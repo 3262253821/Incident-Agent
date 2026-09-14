@@ -8,20 +8,11 @@ the whole serialized payload, not just a couple of fields.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from langchain_core.messages import AIMessage
 
 from app.incident_agent.core.redaction import (
     MASK,

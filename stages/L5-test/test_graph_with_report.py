@@ -9,7 +9,6 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-
 L4_LANGGRAPH_DIR = Path(__file__).resolve().parents[1] / "L4-langgraph"
 
 if str(L4_LANGGRAPH_DIR) not in sys.path:

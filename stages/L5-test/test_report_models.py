@@ -2,7 +2,6 @@ import json
 import sys
 from pathlib import Path
 
-
 L3_TOOLS_DIR = Path(__file__).resolve().parents[1] / "L3-tools"
 
 if str(L3_TOOLS_DIR) not in sys.path:
