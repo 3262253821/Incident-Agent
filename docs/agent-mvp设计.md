@@ -827,6 +827,37 @@ MVP 阶段 Agent 可以不重复实现注册、密码哈希和用户表，但必
 
 检索是有副作用为零的读请求，未来可以增加一次带退避的重试，但 MVP 不自动重试，避免延长故障分析和重复记录。
 
+#### 已实现：模型超时、请求预算与错误归一化（P0-4-1）
+
+DevAtlas 一侧原本就有 20 秒读取超时，但**模型一侧完全没有**，这是最危险的不对称：OpenAI SDK 默认 `timeout=600s`、`max_retries=2`，一次卡住的调用会占住 FastAPI 工作线程和 MySQL 会话十分钟，而调用方早就超时了。
+
+```text
+单次模型调用   INCIDENT_MODEL_TIMEOUT_SECONDS，默认 30 秒
+               connect 超时固定 5 秒（不超过读取超时）
+               自动重试 = 0（SDK 的 2 次重试会把最坏延迟放大且难以推理）
+请求总预算     INCIDENT_REQUEST_TIMEOUT_SECONDS，默认 90 秒
+               必须小于前端 axios 的 120 秒，留出网络与序列化余量
+```
+
+请求预算是**协作式**的，不做线程强杀（Python 里无法安全中断线程，强杀会留下仍在写入的请求）：`RequestDeadline` 在 `agent` 与 `report` 两个会调用模型的节点**开始前**检查剩余预算，耗尽即抛 `RequestTimeoutError`，走与其它错误相同的受控降级路径并生成 `degraded_summary`。
+
+连带的两个配套改动：
+
+- `route_after_agent` 现在先看 `status`：agent 节点因模型失败或预算耗尽已置为 `degraded` 时直接走 `END`。否则流程会继续进入报告节点、再调一次模型，把真实的 `MODEL_TIMEOUT` 覆盖成泛化的 `report_validation_failed`。
+- 模型/依赖异常一律经 `core/errors.py::describe_model_error` 归一化，只返回固定文案与错误码，绝不回传 `str(exc)`：
+
+```text
+APITimeoutError                     → MODEL_TIMEOUT
+RateLimitError                      → MODEL_RATE_LIMITED
+AuthenticationError/PermissionDenied → MODEL_AUTH_ERROR
+APIConnectionError                  → MODEL_UNAVAILABLE
+BadRequest/UnprocessableEntity      → MODEL_INVALID_REQUEST
+InternalServerError / APIStatusError → MODEL_UNAVAILABLE / MODEL_ERROR
+其它异常                             → AGENT_INTERNAL_ERROR
+```
+
+错误码会进入 `degraded_summary.suggestions`，所以"模型超时"和"被限流"给用户的是不同的下一步建议，而不是同一句"执行失败"。
+
 ### 11.5 响应校验
 
 Agent 必须用自己的 Pydantic 模型校验 DevAtlas 的响应：
@@ -941,6 +972,44 @@ agent_steps：每个节点/工具步骤的轨迹、参数摘要、结果状态�
 `observations` 可以先作为 `agent_runs` 的 JSON 字段保存；如果后续要按工具、错误码或引用统计，再拆为独立表。数据库结构变更必须使用 Alembic，不直接手动修改表结构。
 
 数据库连接池、事务提交、回滚、关闭和迁移配置独立于 DevAtlas，不能导入 DevAtlas 的数据库 Session。
+
+### 12.4 中断记录的回收（已实现，P0-4-2）
+
+`create_run()` 会在 Graph 开始前先提交一条 `status=running` 的记录。如果进程在这之后被 Ctrl+C、OOM 或 `--reload` 杀掉，这条记录会永远停在 `running`，前端把"永远不会结束的运行"当成正常记录展示。
+
+处理方式：
+
+```text
+应用启动（FastAPI lifespan）
+→ reclaim_stale_runs()：把 started_at 早于 15 分钟且仍为 running 的记录
+  → status 置为 degraded
+  → interrupted_at 置为当前时间
+  → completed_at 置为当前时间
+  → error 写明"运行进程已中断，未生成结果（启动时自动回收）"
+```
+
+设计取舍：
+
+- **不新增状态枚举值**。`status` 仍是 `completed|degraded|...`，用新增列 `interrupted_at`（可空，Alembic 迁移 `370ee3c8987d`）表达"被中断"，接口只多一个 `interrupted: bool` 字段，前端据此显示 `INTERRUPTED` 而不是普通 `DEGRADED`。
+- **只回收超龄记录**，不回收刚刚创建的 `running`：多 worker 同时启动时，另一个 worker 正在执行的运行不能被误伤。
+- MySQL 下对候选行加 `FOR UPDATE`，保证多实例同时启动时不会重复回收同一批（SQLite 不支持行锁，测试环境跳过）。
+- 回收失败**不能让服务起不来**：`lifespan` 里捕获所有异常并记录日志，服务照常提供只读能力。
+
+### 12.5 步骤追加的幂等与并发（已实现，P0-4-3）
+
+旧实现用 `count(*) + 1` 推算下一个 `step_index` 并且只追加，一旦同一个 run 被写两次（重试、SSE 分批写入、多 worker 处理同一 run）就会撞上唯一约束 `uq_agent_steps_run_index(run_id, step_index)`。
+
+现在的契约：
+
+```text
+同一个 run 的步骤写入是一个整体操作
+→ 先对 agent_runs 行加锁（MySQL FOR UPDATE），使同一 run 的并发追加串行化
+→ 删除该 run 已有的 agent_steps
+→ 按 1..N 重新写入本次的步骤
+→ 提交，并 expire(run, ["steps"]) 让调用方读到最新结果
+```
+
+因此重复写入同一状态不会产生重复行，写入更短的步骤列表会**替换**而不是留下残余的高位索引。代价是步骤行的自增 ID 与 `created_at` 在重写时会更新——排查用的是 `step_index`/`node`/`action`，对外也不暴露步骤主键，因此可以接受。
 
 ---
 

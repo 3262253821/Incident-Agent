@@ -9,8 +9,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
+from ..core.errors import describe_model_error
 from ..core.redaction import redact_for_model
 from ..core.statuses import RunStatus
+from ..graph.deadline import RequestDeadline
 from ..graph.evidence import build_degraded_summary
 from ..graph.state import AgentState
 from ..graph.workflow import build_graph_with_gateway
@@ -136,6 +138,8 @@ def execute_incident(
 
     settings = settings or get_settings()
     effective_top_k = request.top_k or settings.default_top_k
+    # One budget for the whole analysis, shared by every model round.
+    deadline = RequestDeadline(settings.request_timeout_seconds)
     redacted_title = redact_for_model(request.title.strip(), max_length=200)
     redacted_content = redact_for_model(request.content.strip())
 
@@ -193,21 +197,30 @@ def execute_incident(
                 top_k=effective_top_k,
                 access_token=access_token,
                 max_iterations=settings.max_iterations,
+                deadline=deadline,
             )
             final_state = graph.invoke(state)
-        except Exception:
+        except Exception as exc:
             # The graph itself failed (model or dependency error), so the nodes
             # never ran. Build the degraded summary here so the caller still gets
-            # a deterministic account of what was established.
-            graph_error = "Agent 执行失败，请检查模型或外部服务状态"
+            # a deterministic account of what was established, and normalize the
+            # underlying error instead of leaking the SDK exception.
+            error_code, graph_error = describe_model_error(exc)
+            summary_error = f"{graph_error}（{error_code}）"
+            if deadline.enabled:
+                summary_error += (
+                    f"；本次请求已耗时 {deadline.elapsed_seconds:.1f} 秒"
+                    f"（上限 {deadline.timeout_seconds:.0f} 秒）"
+                )
             final_state = {
                 **state,
                 "status": RunStatus.DEGRADED,
-                "error": graph_error,
+                "error": summary_error,
                 "degraded_summary": build_degraded_summary(
                     state.get("observations"),
                     status=RunStatus.DEGRADED,
-                    error=graph_error,
+                    error=summary_error,
+                    error_code=error_code,
                 ).model_dump(),
             }
     finally:

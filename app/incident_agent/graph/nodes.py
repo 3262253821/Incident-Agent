@@ -16,6 +16,7 @@ from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 from pydantic import ValidationError
 
+from ..core.errors import describe_model_error
 from ..core.redaction import redact_for_model, redact_payload, redact_text
 from ..core.statuses import (
     InternalRunStatus,
@@ -25,6 +26,7 @@ from ..core.statuses import (
 )
 from ..schemas.incident import IncidentReport
 from ..schemas.tool import ToolResult
+from .deadline import RequestDeadline, RequestTimeoutError
 from .evidence import (
     VerificationDecision,
     build_degraded_summary,
@@ -189,14 +191,77 @@ def _redacting_tool_node(tools: Sequence[BaseTool]) -> Any:
     return redacting_node
 
 
-def make_agent_node(model: Any, tools: Sequence[BaseTool]) -> Callable[[AgentState], dict[str, Any]]:
+def _model_failure_step(
+    state: AgentState,
+    *,
+    node: str,
+    error_code: str,
+    message: str,
+) -> dict[str, Any]:
+    """End the graph with a normalized model failure and a degraded summary."""
+
+    steps = list(state["steps"])
+    steps.append(
+        {
+            "iteration": state["iteration"],
+            "node": node,
+            "action": "call_model",
+            "status": StepStatus.FAILED,
+            "error_code": error_code,
+        }
+    )
+    normalized_error = f"{message}（{error_code}）"
+    return {
+        "steps": steps,
+        "status": RunStatus.DEGRADED,
+        "error": normalized_error,
+        "report": None,
+        "degraded_summary": build_degraded_summary(
+            state.get("observations"),
+            status=RunStatus.DEGRADED,
+            error=normalized_error,
+            error_code=error_code,
+        ).model_dump(),
+    }
+
+
+def make_agent_node(
+    model: Any,
+    tools: Sequence[BaseTool],
+    deadline: RequestDeadline | None = None,
+) -> Callable[[AgentState], dict[str, Any]]:
     """Create a node that asks the model whether tools are needed."""
 
     model_with_tools = model.bind_tools(list(tools))
 
     def agent_node(state: AgentState) -> dict[str, Any]:
         current_iteration = state["iteration"] + 1
-        response = model_with_tools.invoke(state["messages"])
+
+        # Cooperative request-budget check: refuse to start another model round
+        # once the budget is gone, instead of letting the caller time out while
+        # the graph keeps working.
+        if deadline is not None:
+            try:
+                deadline.check()
+            except RequestTimeoutError as exc:
+                return _model_failure_step(
+                    state,
+                    node="agent",
+                    error_code=exc.error_code,
+                    message=exc.message,
+                )
+
+        try:
+            response = model_with_tools.invoke(state["messages"])
+        except Exception as exc:
+            error_code, message = describe_model_error(exc)
+            return _model_failure_step(
+                state,
+                node="agent",
+                error_code=error_code,
+                message=message,
+            )
+
         if getattr(response, "content", None):
             response = response.model_copy(
                 update={
@@ -302,10 +367,25 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
     return observe_tools_node
 
 
-def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]]:
+def make_report_node(
+    report_model: Any,
+    deadline: RequestDeadline | None = None,
+) -> Callable[[AgentState], dict[str, Any]]:
     """Create a node that generates and validates an IncidentReport."""
 
     def report_node(state: AgentState) -> dict[str, Any]:
+        # The report is a second model round; it must respect the same budget.
+        if deadline is not None:
+            try:
+                deadline.check()
+            except RequestTimeoutError as exc:
+                return _model_failure_step(
+                    state,
+                    node="report",
+                    error_code=exc.error_code,
+                    message=exc.message,
+                )
+
         report_messages = [
             SystemMessage(content=REPORT_SYSTEM_PROMPT),
             HumanMessage(
@@ -322,36 +402,20 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
         try:
             response = report_model.invoke(report_messages)
             report = parse_report(response.content)
-        except json.JSONDecodeError as exc:
-            error = f"报告不是合法 JSON：{exc}"
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:
+            if isinstance(exc, json.JSONDecodeError):
+                error = f"报告不是合法 JSON：{exc}"
+                error_code = StepErrorCode.INVALID_JSON
+            else:
+                error = f"报告结构校验失败：{exc}"
+                error_code = StepErrorCode.INVALID_REPORT
             steps.append(
                 {
                     "iteration": state["iteration"],
                     "node": "report",
                     "action": "validate_report",
                     "status": StepStatus.FAILED,
-                    "error_code": StepErrorCode.INVALID_JSON,
-                }
-            )
-            return {
-                "steps": steps,
-                "status": RunStatus.REPORT_VALIDATION_FAILED,
-                "error": error,
-                "degraded_summary": build_degraded_summary(
-                    state.get("observations"),
-                    status=RunStatus.REPORT_VALIDATION_FAILED,
-                    error=error,
-                ).model_dump(),
-            }
-        except (ValidationError, TypeError, ValueError) as exc:
-            error = f"报告结构校验失败：{exc}"
-            steps.append(
-                {
-                    "iteration": state["iteration"],
-                    "node": "report",
-                    "action": "validate_report",
-                    "status": StepStatus.FAILED,
-                    "error_code": StepErrorCode.INVALID_REPORT,
+                    "error_code": error_code,
                 }
             )
             return {
@@ -521,6 +585,13 @@ def route_after_agent(
     effective_max_iterations = max_iterations or state.get("max_iterations")
     if effective_max_iterations is None:
         raise ValueError("缺少 max_iterations 配置")
+
+    # The agent node can already have terminated the run (model failure or an
+    # exhausted request budget) without producing an AIMessage. Continuing to the
+    # report node would call the model again and overwrite the real error code
+    # with a generic report-validation failure.
+    if state.get("status") == RunStatus.DEGRADED:
+        return "end"
 
     last_message = state["messages"][-1]
     if not isinstance(last_message, AIMessage) or not last_message.tool_calls:

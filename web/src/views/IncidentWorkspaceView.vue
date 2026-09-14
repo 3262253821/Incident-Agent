@@ -10,7 +10,7 @@ import DegradedPanel from '../components/DegradedPanel.vue'
 import HistoryDrawer from '../components/HistoryDrawer.vue'
 import { apiErrorMessage } from '../api/client'
 import { checkHealth } from '../api/system'
-import { RUN_STATUS, statusLabel, statusTone } from '../constants/status'
+import { RUN_STATUS, runStatusLabel, runStatusTone } from '../constants/status'
 import { useAuthStore } from '../stores/auth'
 import { useIncidentStore } from '../stores/incident'
 import type { RunResponse } from '../types/api'
@@ -32,12 +32,12 @@ const runStatus = computed(() => incident.result?.status)
 const runLabel = computed(() => {
   if (incident.running) return 'ANALYZING'
   if (!runStatus.value) return 'READY'
-  return statusLabel(runStatus.value)
+  return runStatusLabel(runStatus.value, incident.result?.interrupted)
 })
 const runTone = computed(() => {
   if (incident.running) return 'busy'
   if (!runStatus.value) return 'idle'
-  return statusTone(runStatus.value)
+  return runStatusTone(runStatus.value, incident.result?.interrupted)
 })
 // 报告通过校验（含证据不足）时展示报告；否则展示证据快照。
 const showReport = computed(

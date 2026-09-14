@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 
 from ..services.rag_client import RagGateway
 from ..services.tools import build_tools
+from .deadline import RequestDeadline
 from .nodes import (
     _redacting_tool_node,
     degrade_node,
@@ -28,11 +29,16 @@ def build_graph(
     tools: Sequence[BaseTool],
     report_model: Any | None = None,
     max_iterations: int = 4,
+    deadline: RequestDeadline | None = None,
 ):
     """Compile the Agent graph with injected model and tools.
 
     The base model is bound to tools only for the decision node. The report
     model remains unbound so report generation cannot trigger more tools.
+
+    ``deadline`` bounds the whole analysis: both model-calling nodes check it
+    before starting another round so a slow model cannot outlive the request
+    budget.
     """
 
     if max_iterations < 1:
@@ -42,10 +48,10 @@ def build_graph(
 
     report_model = report_model or model
     builder = StateGraph(AgentState)
-    builder.add_node("agent", make_agent_node(model, tools))
+    builder.add_node("agent", make_agent_node(model, tools, deadline))
     builder.add_node("tools", _redacting_tool_node(tools))
     builder.add_node("observe", make_observe_node())
-    builder.add_node("report", make_report_node(report_model))
+    builder.add_node("report", make_report_node(report_model, deadline))
     builder.add_node("degrade", degrade_node)
     builder.add_node(
         "limit",
@@ -60,7 +66,7 @@ def build_graph(
         lambda state: route_after_agent(
             {**state, "max_iterations": max_iterations},
         ),
-        {"tools": "tools", "report": "report", "limit": "limit"},
+        {"tools": "tools", "report": "report", "limit": "limit", "end": END},
     )
     builder.add_edge("tools", "observe")
     builder.add_conditional_edges(
@@ -83,6 +89,7 @@ def build_graph_with_gateway(
     access_token: str | None = None,
     report_model: Any | None = None,
     max_iterations: int = 4,
+    deadline: RequestDeadline | None = None,
 ):
     """Compose request-scoped tools and compile the Agent graph."""
 
@@ -97,4 +104,5 @@ def build_graph_with_gateway(
         tools=tools,
         report_model=report_model,
         max_iterations=max_iterations,
+        deadline=deadline,
     )

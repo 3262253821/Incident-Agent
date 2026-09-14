@@ -37,6 +37,13 @@ class AgentRun(Base):
         DateTime,
         nullable=True,
     )
+    # Set when the process died mid-run and a later startup reclaimed the row.
+    # ``status`` deliberately stays ``completed | degraded | ...`` so the API
+    # response shape does not grow a new enum value.
+    interrupted_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
 
     steps: Mapped[list["AgentStep"]] = relationship(
         back_populates="run",

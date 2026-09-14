@@ -133,3 +133,5 @@ class RunResponse(BaseModel):
     error: str | None = None
     # Only present when the run did not end in a validated report.
     degraded_summary: DegradedSummary | None = None
+    # True when a previous process died mid-run and a later startup reclaimed it.
+    interrupted: bool = False

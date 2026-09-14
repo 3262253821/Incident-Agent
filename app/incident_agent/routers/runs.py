@@ -39,6 +39,7 @@ def _to_response(run) -> RunResponse:
             for step in run.steps
         ],
         error=run.error,
+        interrupted=run.interrupted_at is not None,
     )
 
 

@@ -92,4 +92,5 @@ export interface RunResponse {
   steps: AgentStep[]
   error: string | null
   degraded_summary?: DegradedSummary | null
+  interrupted?: boolean
 }

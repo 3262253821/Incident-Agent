@@ -352,6 +352,20 @@ ERROR_SUGGESTIONS: dict[str, str] = {
 
 GENERIC_SUGGESTION = "请根据上面的失败工具和错误码人工核对，并参考服务端日志中的同一 run_id。"
 
+# Model-side and request-level failures are normalized in ``core/errors.py``.
+ERROR_SUGGESTIONS.update(
+    {
+        "MODEL_TIMEOUT": "本次调用模型超时（可能是模型服务变慢或网络抖动），可在网络恢复后重试，或缩短日志内容。",
+        "MODEL_RATE_LIMITED": "模型服务限流，请稍后重试，或降低并发分析数量。",
+        "MODEL_UNAVAILABLE": "无法连接模型服务，请检查网络、代理，以及 INCIDENT_AGENT_BASE_URL 是否可达。",
+        "MODEL_AUTH_ERROR": "模型鉴权失败，请检查 DEEPSEEK_API_KEY 是否有效且未被撤销。",
+        "MODEL_INVALID_REQUEST": "模型拒绝了本次参数（常见于上下文过长），可缩短日志后重试。",
+        "MODEL_ERROR": "模型调用返回异常状态，请稍后重试并查看服务端日志中的同一 run_id。",
+        "REQUEST_TIMEOUT": "本次分析超过了请求时间预算，请缩短日志或提高 INCIDENT_REQUEST_TIMEOUT_SECONDS 后重试。",
+        "AGENT_INTERNAL_ERROR": "Agent 内部执行异常，请查看服务端日志中的同一 run_id 定位具体节点。",
+    }
+)
+
 
 def _normalized_error_code(value: Any) -> str:
     return str(value).strip().upper() if value else ""
@@ -361,17 +375,34 @@ def _suggestion_for(error_code: str) -> str:
     return ERROR_SUGGESTIONS.get(error_code, GENERIC_SUGGESTION)
 
 
+def extract_error_codes(text: str | None) -> list[str]:
+    """Pull known error codes out of a message, e.g. ``...（MODEL_TIMEOUT）``.
+
+    Model and request failures happen before any observation exists, so the code
+    is not in ``observations``; it travels in the error text instead. Only codes
+    present in :data:`ERROR_SUGGESTIONS` are recognized, so arbitrary text
+    (a JSON validation message, a stack frame) cannot produce a false match.
+    """
+
+    if not text:
+        return []
+    normalized = text.upper()
+    return [code for code in ERROR_SUGGESTIONS if code in normalized]
+
+
 def build_degraded_summary(
     observations: Any,
     *,
     status: str,
     error: str | None,
+    error_code: str | None = None,
 ) -> DegradedSummary:
     """Build a model-free summary of what a failed run actually established.
 
     Everything here is derived from recorded observations, so a degraded run
     still reports the log signals and real knowledge-base sources it did obtain
-    instead of collapsing into a single error string.
+    instead of collapsing into a single error string. ``error_code`` covers the
+    case where the failure happened before any observation existed.
     """
 
     failed_tools: list[str] = []
@@ -380,6 +411,14 @@ def build_degraded_summary(
     log_signals: list[DegradedLogSignal] = []
     knowledge_base_sources: list[DegradedKnowledgeBaseSource] = []
     service_statuses: list[str] = []
+
+    # 失败发生得比任何工具观察都早时（模型超时、请求预算耗尽），错误码只能
+    # 从参数或错误文案里取，否则只会给出通用建议。
+    explicit_code = _normalized_error_code(error_code)
+    if explicit_code:
+        error_codes.append(explicit_code)
+    else:
+        error_codes.extend(extract_error_codes(error))
 
     items = observations if isinstance(observations, list) else []
 

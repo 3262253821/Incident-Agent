@@ -40,6 +40,19 @@ export function statusTone(status: string): string {
   return STATUS_TONE[status] ?? 'warn'
 }
 
+/**
+ * 被中断的运行：进程在 Graph 结束前消失，由下一次启动回收。
+ * 它的服务端状态是 degraded，但必须显示成 INTERRUPTED，否则用户会把它
+ * 当成一次正常的降级分析。
+ */
+export function runStatusLabel(status: string, interrupted?: boolean): string {
+  return interrupted ? 'INTERRUPTED' : statusLabel(status)
+}
+
+export function runStatusTone(status: string, interrupted?: boolean): string {
+  return interrupted ? 'warn' : statusTone(status)
+}
+
 /** 报告未通过校验时为 true；有报告就不算「证据快照」场景。 */
 export function hasValidatedReport(status: string | undefined): boolean {
   return status === RUN_STATUS.COMPLETED || status === RUN_STATUS.INSUFFICIENT_EVIDENCE
