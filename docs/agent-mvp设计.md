@@ -1325,6 +1325,7 @@ error_code 或错误摘要
 - 无 `tool_name` 的脏观察记录被跳过，有 `tool_name` 但没有 `result` 的记为失败工具；
 - 建议来自 `ERROR_SUGGESTIONS` 错误码映射表，找不到映射时给通用建议（查看同一 `run_id` 的服务端日志）；
 - **成功完成的运行不产生摘要**（`degraded_summary` 为 `None`），避免把成功和失败混在同一字段里；
+- **摘要会写入 `agent_runs.degraded_summary`（JSON 列，迁移 `c78153d58823`）**，因此历史接口返回的摘要与当次响应完全一致。首次实现时摘要只在响应与 Graph state 里，历史上查不到，属于活体验证才暴露出来的缺口；
 - 前端 `DegradedPanel.vue` 渲染 `text`、日志信号、知识库来源、服务状态与建议；没有摘要时明确提示"没有可用的结构化摘要"，而不是显示空白。
 
 ---

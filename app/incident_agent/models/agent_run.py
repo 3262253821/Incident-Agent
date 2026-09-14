@@ -29,6 +29,12 @@ class AgentRun(Base):
     observations: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     report: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Deterministic, model-free summary of what a failed run established. Kept in
+    # the row so the history view shows the same thing the live response did.
+    degraded_summary: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
     started_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

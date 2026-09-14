@@ -238,5 +238,6 @@ def execute_incident(
         observations=final_state["observations"],
         report=final_state["report"],
         error=final_state["error"],
+        degraded_summary=final_state.get("degraded_summary"),
     )
     return _response_from_state(final_state)

@@ -56,6 +56,7 @@ def finish_run(
     observations: list[dict[str, Any]],
     report: dict[str, Any] | None,
     error: str | None,
+    degraded_summary: dict[str, Any] | None = None,
 ) -> AgentRun:
     """Persist the final graph state."""
 
@@ -64,6 +65,7 @@ def finish_run(
     run.observations = observations
     run.report = report
     run.error = error
+    run.degraded_summary = degraded_summary
     run.completed_at = datetime.utcnow()
     db.commit()
     db.refresh(run)

@@ -40,6 +40,7 @@ def _to_response(run) -> RunResponse:
         ],
         error=run.error,
         interrupted=run.interrupted_at is not None,
+        degraded_summary=run.degraded_summary,
     )
 
 
