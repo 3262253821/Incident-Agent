@@ -110,7 +110,9 @@ def test_execute_incident_forwards_request_top_k_to_rag_gateway():
     )
     report = (
         '{"summary":"已收集证据。","category":"database",'
-        '"evidence":[{"source":"knowledge_base","detail":"命中手册。"}],'
+        # P0-3-2：引用必须能追溯到本次检索到的原文，才能通过证据核验。
+        '"evidence":[{"source":"knowledge_base","detail":'
+        '"订单服务返回 502 可能与数据库连接超时有关，建议检查 MySQL、连接池和网络连通性。"}],'
         '"possible_causes":["数据库连接超时"],'
         '"troubleshooting_steps":["检查数据库"],'
         '"references":[],"confidence":"medium"}'

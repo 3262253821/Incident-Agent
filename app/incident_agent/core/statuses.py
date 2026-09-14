@@ -50,5 +50,6 @@ class StepErrorCode:
     """Error codes recorded on steps for diagnosis."""
 
     NO_TOOL_EVIDENCE = "NO_TOOL_EVIDENCE"
+    UNVERIFIED_EVIDENCE = "UNVERIFIED_EVIDENCE"
     INVALID_JSON = "INVALID_JSON"
     INVALID_REPORT = "INVALID_REPORT"

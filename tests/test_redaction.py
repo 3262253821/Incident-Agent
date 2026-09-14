@@ -272,16 +272,33 @@ def test_tool_observation_is_masked_before_it_is_stored_in_state():
 
 
 def test_report_free_text_is_masked_before_it_is_returned():
+    # 证据本体必须能追溯到本次检索到的原文，报告才会被交付；
+    # 其余字段塞满凭据，用来验证报告的自由文本也被脱敏。
     leaking_report = (
         '{"summary":"根因确认：password=devpass123 导致连接失败。",'
         '"category":"database",'
-        '"evidence":[{"source":"tool_error","detail":"api_key: sk-abcdefghijklmnop"}],'
+        '"evidence":[{"source":"knowledge_base","detail":'
+        '"订单服务返回 502 可能与数据库连接超时有关，建议检查 MySQL、连接池和网络连通性。"}],'
         '"possible_causes":["dsn=mysql+pymysql://root:YOUR_MYSQL_PASSWORD@127.0.0.1:3306/dev_atlas"],'
         '"troubleshooting_steps":["Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123def 已过期"],'
         '"references":["手机号：13800138000"],"confidence":"low"}'
     )
     graph = build_graph(
-        model=FakeModel([AIMessage(content="无需工具。")]),
+        model=FakeModel(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "search_knowledge",
+                            "args": {"query": "订单服务 502"},
+                            "id": "call-search",
+                        }
+                    ],
+                ),
+                AIMessage(content="证据已足够。"),
+            ]
+        ),
         report_model=FakeModel([AIMessage(content=leaking_report)]),
         tools=build_tools(MockRagGateway()),
     )
@@ -305,9 +322,9 @@ def test_report_free_text_is_masked_before_it_is_returned():
         }
     )
 
-    # 这个用例没有调用任何工具，因此 P0-3-1 之后状态是
-    # insufficient_evidence；报告本身仍必须存在且已完成脱敏。
-    assert result["status"] == "insufficient_evidence"
+    # 检索成功且引用可追溯，因此报告被交付（completed）；
+    # 报告的自由文本仍必须完成脱敏。
+    assert result["status"] == "completed"
     assert result["report"] is not None
     assert_no_raw_secrets(result["report"])
     assert_contains_mask(result["report"])

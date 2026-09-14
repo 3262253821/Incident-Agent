@@ -706,6 +706,45 @@ distance
 
 模型填写的普通 `references` 字符串不能替代后端保存的真实来源 metadata。
 
+### 10.4 证据核验（已实现，P0-3-2）
+
+结构合法不等于来源真实。报告通过 Pydantic 校验后，还要用**本次运行自己的 observations** 做一次来源核验，实现在 `graph/evidence.py`：
+
+```text
+从 observations 里 result.ok == True 的结果构建白名单：
+  search_knowledge → 每条 sources 的 document_id / version_id /
+                     version_number / chunk_index / filename / content
+  analyze_log      → 只有 signals 非空才算命中（调用了但没信号不算）
+  get_service_status → 只有解析出 service_name 才算命中
+
+对报告里每条 evidence：
+  source=knowledge_base → 必须能追溯到真实来源，判定顺序为
+      ① 模型给出的 document_id（若给）命中真实来源且 version_id 不冲突 → 采用该来源
+      ② 否则按 detail 与真实来源 content 的重叠度判定，
+         重叠率 ≥ 0.6 视为可追溯（中文先做字符包含判断，英文退化为词重合）
+      ③ 都失败 → 剔除
+  source=fault_log / service_status → 对应工具必须真的产出过数据
+  其他 source → 一律视为未核实（新增来源必须显式实现校验，不能默认放行）
+
+命中后由服务端回填引用标识：document_id / version_id / version_number /
+chunk_index / filename 一律以真实来源为准，模型自己写的值会被覆盖。
+```
+
+处理策略（在两种方案中选择了"A. 只剔除伪造项"）：
+
+```text
+剔除无法追溯的证据，保留可追溯的部分
+→ confidence 强制降为 low（只降不升）
+→ 追加 step：action=verify_evidence_sources, error_code=UNVERIFIED_EVIDENCE
+→ 被剔除的内容写入 report.unverified_evidence（detail 截断 200 字符）
+   供前端/排查查看，而不是静默丢弃
+→ 若剔除后一条证据都不剩，则 report=None + status=insufficient_evidence
+   （IncidentReport.evidence 要求至少 1 条，而"有结论、零证据"本身就不该交付）
+
+不采用"整个报告判 report_validation_failed"：模型偶尔编造一条来源很常见，
+那样会让绝大多数包含真实证据的运行一起报废。
+```
+
 ---
 
 ## 11. DevAtlas 接入设计

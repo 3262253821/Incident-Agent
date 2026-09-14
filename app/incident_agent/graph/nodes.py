@@ -25,6 +25,7 @@ from ..core.statuses import (
 )
 from ..schemas.incident import IncidentReport
 from ..schemas.tool import ToolResult
+from .evidence import VerificationDecision, verify_report_evidence
 from .state import AgentState
 
 REPORT_SYSTEM_PROMPT = """
@@ -37,6 +38,9 @@ troubleshooting_steps、references、confidence 字段。
 category 只能是 database、network、application、dependency、unknown。
 confidence 只能是 low、medium、high。
 evidence 必须是对象列表，每个对象必须有 source 和 detail。
+detail 只能描述工具结果中真实存在的内容，不得添加工具没有返回的信息。
+不要在 evidence 里填写 document_id、version_id、version_number、chunk_index
+或 filename，这些引用标识由服务端根据真实检索结果回填；写了也不会被采用。
 source 只能使用以下业务来源值，不能填写工具函数名：
 analyze_log → fault_log；search_knowledge → knowledge_base；
 get_service_status → service_status；工具失败 → tool_error。
@@ -127,6 +131,16 @@ def _successful_observation_count(state: AgentState) -> int:
     return count
 
 
+def _unverified_summary(decision: VerificationDecision) -> str:
+    """Describe dropped evidence by source, never by echoing its full text."""
+
+    counts: dict[str, int] = {}
+    for item in decision.unverified:
+        source = str(item.get("source", "unknown"))
+        counts[source] = counts.get(source, 0) + 1
+    return "、".join(f"{source}×{count}" for source, count in counts.items())
+
+
 def _redact_report(report: IncidentReport) -> dict[str, Any]:
     """Mask credentials in every free-text field before persistence."""
 
@@ -142,6 +156,7 @@ def _redact_report(report: IncidentReport) -> dict[str, Any]:
         ],
         "references": [redact_text(item) for item in data["references"]],
         "evidence": redact_payload(data["evidence"]),
+        "unverified_evidence": redact_payload(data["unverified_evidence"]),
     }
 
 
@@ -348,6 +363,41 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
         # writing from the raw prompt alone, so the run must not be presented as
         # a completed analysis.
         successful_observations = _successful_observation_count(state)
+
+        # P0-3-2: drop citations that cannot be traced back to this run's own
+        # observations. Only the unverifiable items are removed; the rest of the
+        # report survives, with confidence forced down.
+        decision = verify_report_evidence(report, state.get("observations"))
+        report = decision.report
+        error: str | None = None
+
+        if decision.has_unverified:
+            steps.append(
+                {
+                    "iteration": state["iteration"],
+                    "node": "report",
+                    "action": "verify_evidence_sources",
+                    "status": StepStatus.FAILED,
+                    "error_code": StepErrorCode.UNVERIFIED_EVIDENCE,
+                    "unverified_count": len(decision.unverified),
+                }
+            )
+            error = (
+                f"已剔除 {len(decision.unverified)} 条无法追溯到本次工具结果的证据："
+                f"{_unverified_summary(decision)}"
+            )
+
+        # The report contract requires at least one evidence item. If verification
+        # removed every item, there is no report worth returning: a conclusion with
+        # zero verifiable evidence must not be dressed up as a validated report.
+        if decision.evidence_dropped:
+            return {
+                "report": None,
+                "steps": steps,
+                "status": RunStatus.INSUFFICIENT_EVIDENCE,
+                "error": f"{error}；报告已无任何可核实证据，不再返回结论",
+            }
+
         if successful_observations == 0:
             report = report.model_copy(update={"confidence": "low"})
             steps.append(
@@ -370,7 +420,7 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
             "report": _redact_report(report),
             "steps": steps,
             "status": RunStatus.COMPLETED,
-            "error": None,
+            "error": error,
         }
 
     return report_node

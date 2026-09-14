@@ -38,6 +38,22 @@ class EvidenceItem(BaseModel):
     filename: str | None = None
 
 
+class UnverifiedEvidenceItem(BaseModel):
+    """Evidence that could not be traced back to this run's observations.
+
+    Kept for diagnosis and transparency: the caller can see what the model
+    claimed and why it was dropped, instead of silently losing it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    detail: str
+    document_id: int | None = None
+    version_id: int | None = None
+    chunk_index: int | None = None
+
+
 class IncidentReport(BaseModel):
     """Validated final report produced by the report node."""
 
@@ -56,6 +72,11 @@ class IncidentReport(BaseModel):
     troubleshooting_steps: list[str] = Field(min_length=1)
     references: list[str] = Field(default_factory=list)
     confidence: Literal["low", "medium", "high"]
+    # Filled by the server-side evidence check, never by the model: the report
+    # prompt does not ask for it and ``extra="forbid"`` would reject it if it did.
+    unverified_evidence: list[UnverifiedEvidenceItem] = Field(
+        default_factory=list,
+    )
 
 
 class RunResponse(BaseModel):
