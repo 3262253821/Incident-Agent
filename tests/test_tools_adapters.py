@@ -40,6 +40,35 @@ def test_search_knowledge_success():
     assert gateway.calls[0]["has_access_token"] is True
 
 
+def test_search_knowledge_uses_request_scoped_top_k_and_knowledge_base():
+    gateway = MockRagGateway()
+    tools = build_tools(
+        gateway,
+        knowledge_base_id=7,
+        top_k=8,
+        access_token="local-test-token",
+    )
+
+    result = tools[1].invoke(
+        {
+            "query": "订单服务 502",
+            # Tool schema 不再把这两个边界参数交给模型控制。
+            "knowledge_base_id": 999,
+            "top_k": 1,
+        }
+    )
+
+    assert result["ok"] is True
+    assert gateway.calls[0]["knowledge_base_id"] == 7
+    assert gateway.calls[0]["top_k"] == 8
+
+
+def test_search_knowledge_tool_schema_only_exposes_query():
+    tool = build_tools(MockRagGateway(), knowledge_base_id=3, top_k=5)[1]
+
+    assert set(tool.args_schema.model_fields) == {"query"}
+
+
 def test_search_knowledge_no_results_is_successful():
     tools = build_tools(MockRagGateway(mode="no_results"))
 

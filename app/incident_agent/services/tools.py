@@ -104,27 +104,34 @@ def get_service_status(service_name: str) -> dict[str, Any]:
 def build_tools(
     rag_gateway: RagGateway,
     access_token: str | None = None,
+    *,
+    knowledge_base_id: int = 1,
+    top_k: int = 5,
 ) -> list[BaseTool]:
-    """Build LangChain tools with a request-scoped RAG dependency."""
+    """Build LangChain tools with request-scoped RAG boundaries.
+
+    The knowledge-base scope and recall count are injected by the service,
+    rather than exposed as model-controlled tool arguments. Defaults exist
+    only for isolated unit tests that build tools without a request context.
+    """
+
+    if knowledge_base_id <= 0:
+        raise ValueError("knowledge_base_id 必须大于 0")
+    if not 1 <= top_k <= 10:
+        raise ValueError("top_k 必须在 1 到 10 之间")
 
     @tool
     def search_knowledge(
         query: str,
-        knowledge_base_id: int,
-        top_k: int = 5,
     ) -> dict[str, Any]:
         """在 DevAtlas 知识库中检索故障相关文档片段。"""
 
         try:
-            args = SearchKnowledgeArgs(
-                query=query,
-                knowledge_base_id=knowledge_base_id,
-                top_k=top_k,
-            )
+            args = SearchKnowledgeArgs(query=query)
             result = rag_gateway.search_knowledge(
                 query=args.query,
-                knowledge_base_id=args.knowledge_base_id,
-                top_k=args.top_k,
+                knowledge_base_id=knowledge_base_id,
+                top_k=top_k,
                 access_token=access_token,
             )
         except ValidationError as exc:

@@ -32,6 +32,7 @@ def _initial_state(
     run_id: str,
     user: UserPublic,
     request: IncidentAnalyzeRequest,
+    top_k: int,
     max_iterations: int,
 ) -> AgentState:
     """Build the first state without placing the JWT into it."""
@@ -42,7 +43,7 @@ def _initial_state(
         "title": request.title.strip(),
         "input_content": request.content.strip(),
         "knowledge_base_id": request.knowledge_base_id,
-        "top_k": request.top_k,
+        "top_k": top_k,
         "messages": [
             SystemMessage(content=AGENT_SYSTEM_PROMPT),
             HumanMessage(
@@ -93,6 +94,7 @@ def execute_incident(
     """
 
     settings = settings or get_settings()
+    effective_top_k = request.top_k or settings.default_top_k
     run_id = str(uuid4())
     run: AgentRun = create_run(
         db,
@@ -114,6 +116,7 @@ def execute_incident(
         run_id=run_id,
         user=user,
         request=request,
+        top_k=effective_top_k,
         max_iterations=settings.max_iterations,
     )
 
@@ -121,6 +124,8 @@ def execute_incident(
         graph = build_graph_with_gateway(
             model=model or create_chat_model(settings),
             rag_gateway=gateway,
+            knowledge_base_id=request.knowledge_base_id,
+            top_k=effective_top_k,
             access_token=access_token,
             max_iterations=settings.max_iterations,
         )

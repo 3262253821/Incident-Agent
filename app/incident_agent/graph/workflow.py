@@ -49,13 +49,17 @@ def build_graph(
     builder.add_node("degrade", degrade_node)
     builder.add_node(
         "limit",
-        lambda state: limit_node(state, max_iterations),
+        lambda state: limit_node(
+            {**state, "max_iterations": max_iterations},
+        ),
     )
 
     builder.add_edge(START, "agent")
     builder.add_conditional_edges(
         "agent",
-        lambda state: route_after_agent(state, max_iterations),
+        lambda state: route_after_agent(
+            {**state, "max_iterations": max_iterations},
+        ),
         {"tools": "tools", "report": "report", "limit": "limit"},
     )
     builder.add_edge("tools", "observe")
@@ -74,13 +78,20 @@ def build_graph_with_gateway(
     *,
     model: Any,
     rag_gateway: RagGateway,
+    knowledge_base_id: int,
+    top_k: int,
     access_token: str | None = None,
     report_model: Any | None = None,
     max_iterations: int = 4,
 ):
     """Compose request-scoped tools and compile the Agent graph."""
 
-    tools = build_tools(rag_gateway, access_token=access_token)
+    tools = build_tools(
+        rag_gateway,
+        access_token=access_token,
+        knowledge_base_id=knowledge_base_id,
+        top_k=top_k,
+    )
     return build_graph(
         model=model,
         tools=tools,

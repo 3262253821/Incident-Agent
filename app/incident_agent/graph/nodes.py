@@ -273,8 +273,15 @@ def degrade_node(state: AgentState) -> dict[str, Any]:
     }
 
 
-def limit_node(state: AgentState, max_iterations: int) -> dict[str, Any]:
+def limit_node(
+    state: AgentState,
+    max_iterations: int | None = None,
+) -> dict[str, Any]:
     """End safely once the model-request budget is exhausted."""
+
+    effective_max_iterations = max_iterations or state.get("max_iterations")
+    if effective_max_iterations is None:
+        raise ValueError("缺少 max_iterations 配置")
 
     steps = list(state["steps"])
     steps.append(
@@ -288,17 +295,24 @@ def limit_node(state: AgentState, max_iterations: int) -> dict[str, Any]:
     return {
         "steps": steps,
         "status": "max_iterations",
-        "error": f"达到最大模型请求次数：{max_iterations}",
+        "error": f"达到最大模型请求次数：{effective_max_iterations}",
     }
 
 
-def route_after_agent(state: AgentState, max_iterations: int) -> str:
+def route_after_agent(
+    state: AgentState,
+    max_iterations: int | None = None,
+) -> str:
     """Route an AI response to tools, report, or the iteration guard."""
+
+    effective_max_iterations = max_iterations or state.get("max_iterations")
+    if effective_max_iterations is None:
+        raise ValueError("缺少 max_iterations 配置")
 
     last_message = state["messages"][-1]
     if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
         return "report"
-    if state["iteration"] >= max_iterations:
+    if state["iteration"] >= effective_max_iterations:
         return "limit"
     return "tools"
 

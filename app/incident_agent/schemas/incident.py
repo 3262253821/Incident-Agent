@@ -15,7 +15,8 @@ class IncidentAnalyzeRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=20_000)
     knowledge_base_id: int = Field(gt=0)
-    top_k: int = Field(default=5, ge=1, le=10)
+    # 未提供时由运行时 Settings.default_top_k 注入，避免配置与接口默认值脱节。
+    top_k: int | None = Field(default=None, ge=1, le=10)
 
 
 class EvidenceItem(BaseModel):
@@ -66,4 +67,3 @@ class RunResponse(BaseModel):
     observations: list[dict[str, Any]] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
-

@@ -21,8 +21,6 @@ class SearchKnowledgeArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str = Field(min_length=1, max_length=2_000)
-    knowledge_base_id: int = Field(gt=0)
-    top_k: int = Field(default=5, ge=1, le=10)
 
 
 class GetServiceStatusArgs(BaseModel):
@@ -42,4 +40,3 @@ class ToolResult(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
     error_code: str | None = None
     error: str | None = None
-
