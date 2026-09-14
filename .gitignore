@@ -29,3 +29,18 @@ dist/
 # IDE files
 .idea/
 .vscode/
+
+# Personal and local-only data. Never publish these to a remote:
+#   resume/  个人简历（含姓名、电话、邮箱等个人信息）
+#   tmp/     本地临时与浏览器渲染产物（实测可达上千个文件）
+resume/
+tmp/
+
+# Personal notes: 学校、复习规划、面试记录等私有内容
+docs/复习规划.md
+docs/项目复习笔记整理.md
+
+# TypeScript build info (vue-tsc -b)
+*.tsbuildinfo
+.env.local
+.env.*.local
