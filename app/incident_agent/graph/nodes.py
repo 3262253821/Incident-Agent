@@ -25,7 +25,11 @@ from ..core.statuses import (
 )
 from ..schemas.incident import IncidentReport
 from ..schemas.tool import ToolResult
-from .evidence import VerificationDecision, verify_report_evidence
+from .evidence import (
+    VerificationDecision,
+    build_degraded_summary,
+    verify_report_evidence,
+)
 from .state import AgentState
 
 REPORT_SYSTEM_PROMPT = """
@@ -319,6 +323,7 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
             response = report_model.invoke(report_messages)
             report = parse_report(response.content)
         except json.JSONDecodeError as exc:
+            error = f"报告不是合法 JSON：{exc}"
             steps.append(
                 {
                     "iteration": state["iteration"],
@@ -331,9 +336,15 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
             return {
                 "steps": steps,
                 "status": RunStatus.REPORT_VALIDATION_FAILED,
-                "error": f"报告不是合法 JSON：{exc}",
+                "error": error,
+                "degraded_summary": build_degraded_summary(
+                    state.get("observations"),
+                    status=RunStatus.REPORT_VALIDATION_FAILED,
+                    error=error,
+                ).model_dump(),
             }
         except (ValidationError, TypeError, ValueError) as exc:
+            error = f"报告结构校验失败：{exc}"
             steps.append(
                 {
                     "iteration": state["iteration"],
@@ -346,7 +357,12 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
             return {
                 "steps": steps,
                 "status": RunStatus.REPORT_VALIDATION_FAILED,
-                "error": f"报告结构校验失败：{exc}",
+                "error": error,
+                "degraded_summary": build_degraded_summary(
+                    state.get("observations"),
+                    status=RunStatus.REPORT_VALIDATION_FAILED,
+                    error=error,
+                ).model_dump(),
             }
 
         steps.append(
@@ -391,15 +407,22 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
         # removed every item, there is no report worth returning: a conclusion with
         # zero verifiable evidence must not be dressed up as a validated report.
         if decision.evidence_dropped:
+            dropped_error = f"{error}；报告已无任何可核实证据，不再返回结论"
             return {
                 "report": None,
                 "steps": steps,
                 "status": RunStatus.INSUFFICIENT_EVIDENCE,
-                "error": f"{error}；报告已无任何可核实证据，不再返回结论",
+                "error": dropped_error,
+                "degraded_summary": build_degraded_summary(
+                    state.get("observations"),
+                    status=RunStatus.INSUFFICIENT_EVIDENCE,
+                    error=dropped_error,
+                ).model_dump(),
             }
 
         if successful_observations == 0:
             report = report.model_copy(update={"confidence": "low"})
+            unsupported_error = "未取得任何成功的工具证据，报告仅基于用户描述生成"
             steps.append(
                 {
                     "iteration": state["iteration"],
@@ -413,7 +436,12 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
                 "report": _redact_report(report),
                 "steps": steps,
                 "status": RunStatus.INSUFFICIENT_EVIDENCE,
-                "error": "未取得任何成功的工具证据，报告仅基于用户描述生成",
+                "error": unsupported_error,
+                "degraded_summary": build_degraded_summary(
+                    state.get("observations"),
+                    status=RunStatus.INSUFFICIENT_EVIDENCE,
+                    error=unsupported_error,
+                ).model_dump(),
             }
 
         return {
@@ -429,6 +457,7 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
 def degrade_node(state: AgentState) -> dict[str, Any]:
     """End with a readable degraded status after a tool/report failure."""
 
+    error = state["error"] or "执行失败或没有有效结果"
     steps = list(state["steps"])
     steps.append(
         {
@@ -441,7 +470,13 @@ def degrade_node(state: AgentState) -> dict[str, Any]:
     return {
         "steps": steps,
         "status": RunStatus.DEGRADED,
-        "error": state["error"] or "执行失败或没有有效结果",
+        "error": error,
+        # P0-3-3：失败也要保留已经取得的证据，且不经过模型。
+        "degraded_summary": build_degraded_summary(
+            state.get("observations"),
+            status=RunStatus.DEGRADED,
+            error=error,
+        ).model_dump(),
     }
 
 
@@ -464,10 +499,16 @@ def limit_node(
             "status": RunStatus.MAX_ITERATIONS,
         }
     )
+    error = f"达到最大模型请求次数：{effective_max_iterations}"
     return {
         "steps": steps,
         "status": RunStatus.MAX_ITERATIONS,
-        "error": f"达到最大模型请求次数：{effective_max_iterations}",
+        "error": error,
+        "degraded_summary": build_degraded_summary(
+            state.get("observations"),
+            status=RunStatus.MAX_ITERATIONS,
+            error=error,
+        ).model_dump(),
     }
 
 

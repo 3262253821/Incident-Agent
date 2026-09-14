@@ -1231,6 +1231,33 @@ error_code 或错误摘要
 
 不能因为模型失败就丢弃之前已经获得的证据。
 
+#### `degraded_summary`（已实现，P0-3-3）
+
+四条失败路径（工具失败、报告校验失败、达到循环上限、证据不足）与 Graph 整体异常，都返回一个**不依赖模型**的确定性摘要，实现在 `graph/evidence.py::build_degraded_summary`：
+
+```text
+输入：observations + status + error
+输出：
+  reason                  触发摘要的状态
+  text                    中文可读文本，逐条列出已确认的事实
+  failed_tools            失败的工具名（去重保序）
+  successful_tools        成功执行过的工具名
+  log_signals             已命中的日志信号（type / matched_text / line_number）
+  knowledge_base_sources  已检索到的真实来源（document_id / version_id /
+                          version_number / chunk_index / filename）
+  service_statuses        已查询到的服务与状态
+  suggestions             按错误码映射的固定排查建议（不打乱顺序、去重）
+```
+
+规则与边界：
+
+- **只渲染结构化事实**，不复制模型的任何自由文本，因此摘要里不可能出现模型编造的结论；
+- `matched_text` 截断到 200 字符，日志信号最多 10 条、知识库来源最多 10 条、服务状态最多 5 条，避免摘要本身被长文本撑爆；
+- 无 `tool_name` 的脏观察记录被跳过，有 `tool_name` 但没有 `result` 的记为失败工具；
+- 建议来自 `ERROR_SUGGESTIONS` 错误码映射表，找不到映射时给通用建议（查看同一 `run_id` 的服务端日志）；
+- **成功完成的运行不产生摘要**（`degraded_summary` 为 `None`），避免把成功和失败混在同一字段里；
+- 前端 `DegradedPanel.vue` 渲染 `text`、日志信号、知识库来源、服务状态与建议；没有摘要时明确提示"没有可用的结构化摘要"，而不是显示空白。
+
 ---
 
 ## 17. 测试设计

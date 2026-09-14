@@ -59,6 +59,31 @@ export interface IncidentReport {
   confidence: string
 }
 
+export interface DegradedLogSignal {
+  type: string
+  matched_text: string
+  line_number?: number | null
+}
+
+export interface DegradedKnowledgeBaseSource {
+  document_id?: number | null
+  version_id?: number | null
+  version_number?: number | null
+  chunk_index?: number | null
+  filename?: string | null
+}
+
+export interface DegradedSummary {
+  reason: string
+  text: string
+  failed_tools: string[]
+  successful_tools: string[]
+  log_signals: DegradedLogSignal[]
+  knowledge_base_sources: DegradedKnowledgeBaseSource[]
+  service_statuses: string[]
+  suggestions: string[]
+}
+
 export interface RunResponse {
   run_id: string
   status: string
@@ -66,4 +91,5 @@ export interface RunResponse {
   observations: Observation[]
   steps: AgentStep[]
   error: string | null
+  degraded_summary?: DegradedSummary | null
 }

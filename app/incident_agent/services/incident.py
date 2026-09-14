@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..core.config import Settings, get_settings
 from ..core.redaction import redact_for_model
 from ..core.statuses import RunStatus
+from ..graph.evidence import build_degraded_summary
 from ..graph.state import AgentState
 from ..graph.workflow import build_graph_with_gateway
 from ..models import AgentRun
@@ -102,6 +103,7 @@ def _response_from_state(state: AgentState) -> RunResponse:
         observations=state["observations"],
         steps=state["steps"],
         error=state["error"],
+        degraded_summary=state.get("degraded_summary"),
     )
 
 
@@ -194,10 +196,19 @@ def execute_incident(
             )
             final_state = graph.invoke(state)
         except Exception:
+            # The graph itself failed (model or dependency error), so the nodes
+            # never ran. Build the degraded summary here so the caller still gets
+            # a deterministic account of what was established.
+            graph_error = "Agent 执行失败，请检查模型或外部服务状态"
             final_state = {
                 **state,
                 "status": RunStatus.DEGRADED,
-                "error": "Agent 执行失败，请检查模型或外部服务状态",
+                "error": graph_error,
+                "degraded_summary": build_degraded_summary(
+                    state.get("observations"),
+                    status=RunStatus.DEGRADED,
+                    error=graph_error,
+                ).model_dump(),
             }
     finally:
         if owned_authorizer and hasattr(authorizer, "close"):

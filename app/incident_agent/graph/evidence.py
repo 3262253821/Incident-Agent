@@ -28,7 +28,13 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from ..schemas.incident import EvidenceItem, IncidentReport
+from ..schemas.incident import (
+    DegradedKnowledgeBaseSource,
+    DegradedLogSignal,
+    DegradedSummary,
+    EvidenceItem,
+    IncidentReport,
+)
 
 EVIDENCE_KNOWLEDGE_BASE = "knowledge_base"
 EVIDENCE_FAULT_LOG = "fault_log"
@@ -316,3 +322,227 @@ def verify_report_evidence(
         verified_count=len(verified),
         unverified=tuple(unverified),
     )
+
+
+# --------------------------------------------------------------------------
+# Deterministic degraded summary (P0-3-3)
+# --------------------------------------------------------------------------
+
+MAX_LOG_SIGNALS = 10
+MAX_MATCHED_TEXT = 120
+MAX_KB_SOURCES = 10
+MAX_SERVICE_STATUSES = 5
+
+# Rule-based follow-ups, keyed by the normalized error code. These are asset
+# *suggestions*, never conclusions, and come from code rather than the model.
+ERROR_SUGGESTIONS: dict[str, str] = {
+    "RAG_UNAVAILABLE": "确认 DevAtlas 检索服务已启动、网络可达后重试。",
+    "RAG_NETWORK_ERROR": "确认 Agent 能访问 DevAtlas 地址，并检查本机网络与代理。",
+    "RAG_TIMEOUT": "DevAtlas 检索超时，可在其服务侧查看响应耗时后重试。",
+    "RAG_UNAUTHORIZED": "登录状态可能已过期，请重新登录后再试。",
+    "RAG_KNOWLEDGE_BASE_NOT_FOUND": "确认知识库 ID 存在且当前账号有权访问。",
+    "RAG_INVALID_ARGUMENTS": "检索参数不合法，请检查知识库 ID 与召回数量。",
+    "RAG_INVALID_RESPONSE": "DevAtlas 返回结构与约定不一致，需要检查其接口版本。",
+    "RAG_HTTP_ERROR": "DevAtlas 返回非预期状态码，请查看其服务日志。",
+    "RAG_TOOL_ERROR": "检索工具内部异常，请查看服务端日志中的 run_id。",
+    "UNKNOWN_SERVICE": "当前服务状态工具只有内置 mock 服务，请改用已登记的服务名。",
+    "INVALID_ARGUMENTS": "工具参数校验失败，通常是模型传参不符合契约，可重试或换一种描述。",
+    "INVALID_TOOL_RESULT": "工具返回结构不合法，说明工具实现或外部响应有变更。",
+}
+
+GENERIC_SUGGESTION = "请根据上面的失败工具和错误码人工核对，并参考服务端日志中的同一 run_id。"
+
+
+def _normalized_error_code(value: Any) -> str:
+    return str(value).strip().upper() if value else ""
+
+
+def _suggestion_for(error_code: str) -> str:
+    return ERROR_SUGGESTIONS.get(error_code, GENERIC_SUGGESTION)
+
+
+def build_degraded_summary(
+    observations: Any,
+    *,
+    status: str,
+    error: str | None,
+) -> DegradedSummary:
+    """Build a model-free summary of what a failed run actually established.
+
+    Everything here is derived from recorded observations, so a degraded run
+    still reports the log signals and real knowledge-base sources it did obtain
+    instead of collapsing into a single error string.
+    """
+
+    failed_tools: list[str] = []
+    successful_tools: list[str] = []
+    error_codes: list[str] = []
+    log_signals: list[DegradedLogSignal] = []
+    knowledge_base_sources: list[DegradedKnowledgeBaseSource] = []
+    service_statuses: list[str] = []
+
+    items = observations if isinstance(observations, list) else []
+
+    for observation in items:
+        if not isinstance(observation, Mapping):
+            continue
+        raw_tool_name = observation.get("tool_name")
+        if not isinstance(raw_tool_name, str) or not raw_tool_name:
+            # Not a usable record; do not invent a tool name for it.
+            continue
+        tool_name = raw_tool_name
+        result = observation.get("result")
+        if not isinstance(result, Mapping):
+            failed_tools.append(tool_name)
+            continue
+
+        if not result.get("ok"):
+            failed_tools.append(tool_name)
+            code = _normalized_error_code(result.get("error_code"))
+            if code:
+                error_codes.append(code)
+            continue
+
+        successful_tools.append(tool_name)
+        data = result.get("data")
+        if not isinstance(data, Mapping):
+            continue
+
+        if tool_name == ANALYZE_LOG_TOOL:
+            signals = data.get("signals")
+            if isinstance(signals, list):
+                for signal in signals:
+                    if len(log_signals) >= MAX_LOG_SIGNALS:
+                        break
+                    if not isinstance(signal, Mapping):
+                        continue
+                    matched = signal.get("matched_text") or signal.get("value") or ""
+                    log_signals.append(
+                        DegradedLogSignal(
+                            type=str(signal.get("type") or "unknown"),
+                            matched_text=_truncate(str(matched)),
+                            line_number=_as_int(signal.get("line_number")),
+                        )
+                    )
+
+        elif tool_name == SEARCH_KNOWLEDGE_TOOL:
+            sources = data.get("sources")
+            if isinstance(sources, list):
+                for source in sources:
+                    if len(knowledge_base_sources) >= MAX_KB_SOURCES:
+                        break
+                    if not isinstance(source, Mapping):
+                        continue
+                    filename = source.get("filename")
+                    knowledge_base_sources.append(
+                        DegradedKnowledgeBaseSource(
+                            document_id=_as_int(source.get("document_id")),
+                            version_id=_as_int(source.get("version_id")),
+                            version_number=_as_int(source.get("version_number")),
+                            chunk_index=_as_int(source.get("chunk_index")),
+                            filename=filename if isinstance(filename, str) else None,
+                        )
+                    )
+
+        elif tool_name == GET_SERVICE_STATUS_TOOL:
+            service_name = data.get("service_name")
+            status_value = data.get("status")
+            if isinstance(service_name, str) and len(service_statuses) < MAX_SERVICE_STATUSES:
+                label = service_name
+                if isinstance(status_value, str):
+                    label = f"{service_name}：{status_value}"
+                service_statuses.append(label)
+
+    # Deduplicate while keeping the first-seen order.
+    seen_codes: set[str] = set()
+    suggestions: list[str] = []
+    for code in error_codes:
+        if code in seen_codes:
+            continue
+        seen_codes.add(code)
+        suggestions.append(_suggestion_for(code))
+    if not suggestions:
+        suggestions.append(GENERIC_SUGGESTION)
+
+    text = _compose_summary_text(
+        status=status,
+        error=error,
+        failed_tools=failed_tools,
+        successful_tools=successful_tools,
+        error_codes=list(dict.fromkeys(error_codes)),
+        log_signals=log_signals,
+        knowledge_base_sources=knowledge_base_sources,
+        service_statuses=service_statuses,
+    )
+
+    return DegradedSummary(
+        reason=status,
+        text=text,
+        failed_tools=list(dict.fromkeys(failed_tools)),
+        successful_tools=list(dict.fromkeys(successful_tools)),
+        log_signals=log_signals,
+        knowledge_base_sources=knowledge_base_sources,
+        service_statuses=service_statuses,
+        suggestions=suggestions,
+    )
+
+
+def _compose_summary_text(
+    *,
+    status: str,
+    error: str | None,
+    failed_tools: list[str],
+    successful_tools: list[str],
+    error_codes: list[str],
+    log_signals: list[DegradedLogSignal],
+    knowledge_base_sources: list[DegradedKnowledgeBaseSource],
+    service_statuses: list[str],
+) -> str:
+    """Human-readable Chinese text assembled only from recorded facts."""
+
+    lines: list[str] = []
+    lead = f"本次分析未生成可核实的报告（状态：{status}）。"
+    if error:
+        lead += f"原因：{error}"
+    lines.append(lead)
+
+    if failed_tools:
+        detail = "、".join(dict.fromkeys(failed_tools))
+        if error_codes:
+            detail += f"（错误码：{'、'.join(error_codes)}）"
+        lines.append(f"失败工具：{detail}")
+
+    if successful_tools:
+        lines.append(f"已成功执行的工具：{'、'.join(dict.fromkeys(successful_tools))}")
+
+    if log_signals:
+        rendered = "、".join(
+            f"{signal.type}(第 {signal.line_number} 行)" if signal.line_number
+            else signal.type
+            for signal in log_signals
+        )
+        lines.append(f"已命中的日志信号：{rendered}")
+
+    if knowledge_base_sources:
+        rendered = "、".join(
+            f"{source.filename or '未命名文档'} chunk {source.chunk_index}"
+            if source.chunk_index is not None
+            else (source.filename or "未命名文档")
+            for source in knowledge_base_sources
+        )
+        lines.append(f"已检索到的知识库来源：{rendered}")
+
+    if service_statuses:
+        lines.append(f"已查询到的服务状态：{'、'.join(service_statuses)}")
+
+    if not (
+        failed_tools
+        or successful_tools
+        or log_signals
+        or knowledge_base_sources
+        or service_statuses
+    ):
+        lines.append("本次运行没有产生任何可用的工具观察结果。")
+
+    return "\n".join(lines)
+

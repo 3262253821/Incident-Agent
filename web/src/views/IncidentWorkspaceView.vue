@@ -137,6 +137,7 @@ onMounted(async () => {
         v-else-if="incident.result"
         :observations="incident.result.observations"
         :caption="evidenceCaption"
+        :summary="incident.result.degraded_summary ?? null"
       />
       <p v-if="error && !incident.result" class="form-error bottom-error">
         <AlertTriangle :size="15" /> {{ error }}

@@ -79,6 +79,49 @@ class IncidentReport(BaseModel):
     )
 
 
+class DegradedKnowledgeBaseSource(BaseModel):
+    """One real knowledge-base source, used in a deterministic degraded summary."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: int | None = None
+    version_id: int | None = None
+    version_number: int | None = None
+    chunk_index: int | None = None
+    filename: str | None = None
+
+
+class DegradedLogSignal(BaseModel):
+    """One signal the log tool really matched, with its location."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: str
+    matched_text: str
+    line_number: int | None = None
+
+
+class DegradedSummary(BaseModel):
+    """Deterministic, model-free summary of a failed or degraded run.
+
+    Built only from persisted observations so that a failure still tells the
+    user what *was* established, instead of collapsing to a single error string.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    text: str
+    failed_tools: list[str] = Field(default_factory=list)
+    successful_tools: list[str] = Field(default_factory=list)
+    log_signals: list[DegradedLogSignal] = Field(default_factory=list)
+    knowledge_base_sources: list[DegradedKnowledgeBaseSource] = Field(
+        default_factory=list,
+    )
+    service_statuses: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
 class RunResponse(BaseModel):
     """Public response returned by the Agent API."""
 
@@ -88,3 +131,5 @@ class RunResponse(BaseModel):
     observations: list[dict[str, Any]] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
+    # Only present when the run did not end in a validated report.
+    degraded_summary: DegradedSummary | None = None

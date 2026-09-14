@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -25,4 +25,6 @@ class AgentState(TypedDict):
     status: str
     error: str | None
     report: dict[str, Any] | None
+    # Only set when the run does not end in a validated report.
+    degraded_summary: NotRequired[dict[str, Any] | None]
 
