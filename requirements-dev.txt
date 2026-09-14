@@ -1,0 +1,10 @@
+# Development and verification dependencies.
+#
+# Install on top of the runtime set:
+#   py -m pip install -r requirements-lock.txt -r requirements-dev.txt
+#
+# Kept separate from requirements.txt so a production install does not pull in
+# the test runner and the linter.
+
+pytest==9.1.1
+ruff==0.16.5

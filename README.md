@@ -143,7 +143,7 @@ cd E:\IncidentAgent
 $env:PYTHONPATH="E:\IncidentAgent"
 py -m pytest tests -q
 py -m compileall -q app migrations tests
-alembic check
+alembic check          # 需要本机 MySQL（CI 中跳过，见下）
 ruff check app
 ```
 
@@ -153,6 +153,28 @@ ruff check app
 cd E:\IncidentAgent\web
 npm run build
 ```
+
+### 依赖安装与环境复现
+
+```powershell
+py -m pip install -r requirements.txt        # 运行时依赖（版本下限）
+py -m pip install -r requirements-lock.txt   # 精确锁定版本，CI 用这一份
+py -m pip install -r requirements-dev.txt    # 测试与 lint（ruff、pytest）
+```
+
+`requirements.txt` 只写下限，方便 GitHub 的依赖安全告警对着它工作；**可复现安装用 `requirements-lock.txt`**——它是本机通过全部测试的精确版本组合，CI 也按它安装。后端测试全部使用 SQLite 内存库，因此**离线即可运行**，不需要 MySQL。
+
+### CI
+
+`.github/workflows/ci.yml` 在 push 与 PR 时执行：
+
+```text
+后端：pip install -r requirements-lock.txt -r requirements-dev.txt
+      ruff check app / pytest -q / compileall / alembic heads
+前端：npm ci / npm run build（含 vue-tsc 类型检查）
+```
+
+`alembic heads` 只校验迁移脚本可被解析且只有一个 head；真正比对数据库与模型的 `alembic check` 需要 MySQL，放在本机执行。
 
 更完整的人工验收、演示步骤和限制见：
 
