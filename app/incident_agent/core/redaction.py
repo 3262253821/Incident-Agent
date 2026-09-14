@@ -137,6 +137,135 @@ def redact_for_model(text: str, *, max_length: int = DEFAULT_MAX_LENGTH) -> str:
     return f"{redacted[:max_length]}\n[已截断，原文共 {len(redacted)} 字符]"
 
 
+# --------------------------------------------------------------------------
+# Untrusted-content delimiting (P1-1-3)
+# --------------------------------------------------------------------------
+
+UNTRUSTED_LOG_OPEN = "<untrusted-incident-log>"
+UNTRUSTED_LOG_CLOSE = "</untrusted-incident-log>"
+UNTRUSTED_DATA_OPEN = "<untrusted-tool-data>"
+UNTRUSTED_DATA_CLOSE = "</untrusted-tool-data>"
+
+# Markers a user or a retrieved document could use to fake the end of a
+# delimited block or impersonate a system/assistant role.
+_DELIMITER_MARKERS = (
+    UNTRUSTED_LOG_OPEN,
+    UNTRUSTED_LOG_CLOSE,
+    UNTRUSTED_DATA_OPEN,
+    UNTRUSTED_DATA_CLOSE,
+    "<system>",
+    "</system>",
+    "<|system|>",
+    "<|im_start|>",
+    "<|im_end|>",
+)
+
+# Obvious injection attempts are neutralised (not deleted) so an analyst can
+# still see that someone tried, without the phrase reaching the model as an
+# instruction. This is a low-recall tripwire, not a content filter.
+_INJECTION_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    (
+        "ignore-instructions",
+        re.compile(
+            r"忽略(以上|上面|之前|前面|上述)?(的)?(所有)?(系统)?(提示|指令|规则|要求)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "ignore-instructions",
+        re.compile(
+            r"ignore\s+(all\s+)?(the\s+)?(previous|above|prior|system)\s+"
+            r"(instructions?|prompts?|rules?)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "role-override",
+        re.compile(r"你现在是|你的新身份|you\s+are\s+now\s+(a|an)\b", re.IGNORECASE),
+    ),
+    (
+        "role-override",
+        re.compile(r"系统提示词?(已)?(更新|改变|作废)", re.IGNORECASE),
+    ),
+    (
+        "exfiltration",
+        re.compile(
+            r"(输出|打印|告诉我|泄露|reveal|print|dump)\s*(你的|the)?\s*"
+            r"(系统提示|系统提示词|system\s+prompt|prompt|api[\s_-]?key|密钥)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "tool-override",
+        re.compile(
+            r"(调用|执行|call|invoke)\s*(任意|任意其他|其他|other|any)\s*(工具|tool)",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
+
+def neutralize_instruction_markers(text: str) -> tuple[str, list[str]]:
+    """Make injection-shaped text inert.
+
+    Returns ``(neutralized_text, matched_pattern_names)``. Neutralisation is
+    reversible by the reader — the original wording is kept inside the marker —
+    which keeps the incident log honest as evidence.
+
+    The function deliberately does **not** accept a pattern list: an earlier
+    revision did, and ``wrap_untrusted`` accidentally passed the returned name
+    list back in as the patterns, which silently replaced the whole log with
+    those names. Returning a tuple makes that mistake impossible.
+    """
+
+    matched: list[str] = []
+    for name, pattern in _INJECTION_PATTERNS:
+        if pattern.search(text) is None:
+            continue
+        matched.append(name)
+        text = pattern.sub(
+            lambda match, _name=name: f"[已中和:{_name}]{match.group(0)}",
+            text,
+        )
+    return text, matched
+
+
+def find_instruction_markers(text: str) -> list[str]:
+    """Names of the injection patterns present in ``text`` (no rewriting)."""
+
+    return [name for name, pattern in _INJECTION_PATTERNS if pattern.search(text)]
+
+
+def wrap_untrusted(text: str, *, kind: str) -> str:
+    """Delimit untrusted text as data and inert any instruction-shaped phrases.
+
+    Two structural defences, both independent of how well the model follows
+    instructions:
+
+    1. any delimiter-like marker inside the text is neutralised, so content
+       cannot fake the end of the block or impersonate a system message;
+    2. known injection phrasings are neutralised in place, with the original
+       wording preserved inside the marker.
+
+    The returned text is *not* redacted: callers apply ``redact_for_model``
+    first, so the delimiters are added around already-masked content.
+    """
+
+    if kind not in {"log", "data"}:
+        raise ValueError(f"未知的不可信内容类型：{kind}")
+
+    open_marker = UNTRUSTED_LOG_OPEN if kind == "log" else UNTRUSTED_DATA_OPEN
+    close_marker = UNTRUSTED_LOG_CLOSE if kind == "log" else UNTRUSTED_DATA_CLOSE
+
+    for marker in _DELIMITER_MARKERS:
+        text = text.replace(marker, "［已移除定界符］")
+
+    text, _matched = neutralize_instruction_markers(text)
+
+    return f"{open_marker}\n{text}\n{close_marker}"
+
+
+
 def redact_payload(value):
     """Recursively mask every string inside dicts, lists and tuples.
 

@@ -1327,6 +1327,27 @@ INCIDENT_LOG_FORMAT  默认 json，可设为 text 便于本地阅读
 - 工具白名单由 Python 代码控制；
 - 危险操作不注册为工具。
 
+### 16.3.1 已实现：不可信内容定界与注入中和（P1-1-3）
+
+上面的五条原本只是 Prompt 里的自然语言要求。现在补上**代码层面的结构性防线**，实现在 `core/redaction.py` 的 `wrap_untrusted()`：
+
+```text
+用户故障输入        → <untrusted-incident-log> ... </untrusted-incident-log>
+检索/工具结果       → <untrusted-tool-data>    ... </untrusted-tool-data>
+```
+
+两道防线，都不依赖"模型是否听话"：
+
+1. **定界符伪造防护**：文本内部出现的任何定界符样式（`</untrusted-*>`、`<system>`、`<|im_start|>`、`<|im_end|>` 等）在执行包裹前被替换为 `［已移除定界符］`，因此内容无法提前闭合区块、也无法伪装成系统消息。
+2. **注入形状中和**：识别"忽略以上系统提示 / ignore all previous instructions / 你现在是 / 输出你的系统提示 / 调用任意工具"等模式，在**保留原文**的前提下加上 `[已中和:模式名]` 前缀——留痕而不是删除，因为故障日志本身是可核查的证据。
+
+同时明确了一条实现顺序：**先脱敏、后定界**，所以定界符总是包裹在已掩码的内容之外，不会把凭据挡在脱敏逻辑之外。
+
+关键实现约束（写下来是因为踩过）：
+
+- **`AgentState` 里的 `ToolMessage.content` 必须保持纯 JSON**，`observe` 节点要解析它。定界只发生在 `_messages_for_model()`——即把对话交给模型的那一刻。第一版把定界符直接写进 `ToolMessage`，结果 `observe` 全部解析失败、所有工具结果退化成 `INVALID_TOOL_RESULT`（被测试抓到）。
+- `neutralize_instruction_markers()` 返回 `(text, 命中的模式名)` 元组，**不接受模式列表参数**。第一版接受列表，`wrap_untrusted` 误把上一次返回的模式名当作模式传入，导致整段日志被替换成那几个模式名——原文丢失。返回元组从类型上避免了这种误用。
+
 ### 16.4 报告幻觉控制
 
 - 报告 Prompt 要求只依据事实；
