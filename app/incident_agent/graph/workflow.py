@@ -6,11 +6,11 @@ from typing import Any, Sequence
 
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
 
 from ..services.rag_client import RagGateway
 from ..services.tools import build_tools
 from .nodes import (
+    _redacting_tool_node,
     degrade_node,
     limit_node,
     make_agent_node,
@@ -43,7 +43,7 @@ def build_graph(
     report_model = report_model or model
     builder = StateGraph(AgentState)
     builder.add_node("agent", make_agent_node(model, tools))
-    builder.add_node("tools", ToolNode(list(tools)))
+    builder.add_node("tools", _redacting_tool_node(tools))
     builder.add_node("observe", make_observe_node())
     builder.add_node("report", make_report_node(report_model))
     builder.add_node("degrade", degrade_node)

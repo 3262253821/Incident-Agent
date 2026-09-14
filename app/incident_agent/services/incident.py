@@ -1,4 +1,4 @@
-﻿"""Application service that executes and persists one Agent run."""
+"""Application service that executes and persists one Agent run."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
+from ..core.redaction import redact_for_model
 from ..graph.state import AgentState
 from ..graph.workflow import build_graph_with_gateway
 from ..models import AgentRun
@@ -51,24 +52,31 @@ def _initial_state(
     run_id: str,
     user: UserPublic,
     request: IncidentAnalyzeRequest,
+    title: str,
+    content: str,
     top_k: int,
     max_iterations: int,
 ) -> AgentState:
-    """Build the first state without placing the JWT into it."""
+    """Build the first state without placing the JWT into it.
+
+    ``title`` and ``content`` must already be redacted: the Agent no longer
+    keeps the raw incident log anywhere, so the model context, the persisted
+    rows and the API response all carry the same masked text.
+    """
 
     return {
         "run_id": run_id,
         "owner_user_id": user.id,
-        "title": request.title.strip(),
-        "input_content": request.content.strip(),
+        "title": title,
+        "input_content": content,
         "knowledge_base_id": request.knowledge_base_id,
         "top_k": top_k,
         "messages": [
             SystemMessage(content=AGENT_SYSTEM_PROMPT),
             HumanMessage(
                 content=(
-                    f"故障标题：{request.title.strip()}\n"
-                    f"故障内容：{request.content.strip()}\n"
+                    f"故障标题：{title}\n"
+                    f"故障内容：{content}\n"
                     f"知识库 ID：{request.knowledge_base_id}"
                 )
             ),
@@ -117,10 +125,16 @@ def execute_incident(
     for a missing or foreign knowledge base must not leave a persisted run
     behind, and it must not depend on the model deciding to call the retrieval
     tool.
+
+    Incident input is redacted once, here, before it is handed to the model or
+    written to MySQL. The raw log therefore never reaches the graph state, the
+    model context, the database or the response.
     """
 
     settings = settings or get_settings()
     effective_top_k = request.top_k or settings.default_top_k
+    redacted_title = redact_for_model(request.title.strip(), max_length=200)
+    redacted_content = redact_for_model(request.content.strip())
 
     owned_authorizer = knowledge_base_authorizer is None
     authorizer: KnowledgeBaseAuthorizer = (
@@ -147,8 +161,8 @@ def execute_incident(
             db,
             run_id=run_id,
             owner_user_id=user.id,
-            title=request.title,
-            input_content=request.content,
+            title=redacted_title,
+            input_content=redacted_content,
             knowledge_base_id=request.knowledge_base_id,
             model_name=settings.model,
             max_iterations=settings.max_iterations,
@@ -162,6 +176,8 @@ def execute_incident(
             run_id=run_id,
             user=user,
             request=request,
+            title=redacted_title,
+            content=redacted_content,
             top_k=effective_top_k,
             max_iterations=settings.max_iterations,
         )

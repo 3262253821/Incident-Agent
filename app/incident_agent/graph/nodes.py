@@ -13,8 +13,10 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.tools import BaseTool
+from langgraph.prebuilt import ToolNode
 from pydantic import ValidationError
 
+from ..core.redaction import redact_for_model, redact_payload, redact_text
 from ..schemas.incident import IncidentReport
 from ..schemas.tool import ToolResult
 from .state import AgentState
@@ -94,6 +96,59 @@ def parse_report(raw_report: Any) -> IncidentReport:
     return IncidentReport.model_validate(data)
 
 
+def _fallback_tool_result() -> dict[str, Any]:
+    """The unified result used when a tool payload cannot be parsed."""
+
+    return ToolResult(
+        ok=False,
+        error_code="INVALID_TOOL_RESULT",
+        error="工具结果不是合法的统一结果结构",
+    ).model_dump()
+
+
+def _redact_report(report: IncidentReport) -> dict[str, Any]:
+    """Mask credentials in every free-text field before persistence."""
+
+    data = report.model_dump()
+    return {
+        **data,
+        "summary": redact_text(data["summary"]),
+        "possible_causes": [
+            redact_text(item) for item in data["possible_causes"]
+        ],
+        "troubleshooting_steps": [
+            redact_text(item) for item in data["troubleshooting_steps"]
+        ],
+        "references": [redact_text(item) for item in data["references"]],
+        "evidence": redact_payload(data["evidence"]),
+    }
+
+
+def _redacting_tool_node(tools: Sequence[BaseTool]) -> Any:
+    """Wrap ``ToolNode`` so raw tool output never re-enters the model context.
+
+    ``ToolNode`` copies the tool's return value into ``ToolMessage.content``.
+    Masking here keeps the model, ``observe``, the report node and the database
+    all working on the same already-masked text.
+    """
+
+    base_node = ToolNode(list(tools))
+
+    def redacting_node(state: AgentState) -> dict[str, Any]:
+        result = base_node.invoke(state)
+        messages = [
+            message.model_copy(
+                update={"content": redact_text(str(message.content))}
+            )
+            if isinstance(message, ToolMessage)
+            else message
+            for message in result.get("messages", [])
+        ]
+        return {**result, "messages": messages}
+
+    return redacting_node
+
+
 def make_agent_node(model: Any, tools: Sequence[BaseTool]) -> Callable[[AgentState], dict[str, Any]]:
     """Create a node that asks the model whether tools are needed."""
 
@@ -102,6 +157,28 @@ def make_agent_node(model: Any, tools: Sequence[BaseTool]) -> Callable[[AgentSta
     def agent_node(state: AgentState) -> dict[str, Any]:
         current_iteration = state["iteration"] + 1
         response = model_with_tools.invoke(state["messages"])
+        if getattr(response, "content", None):
+            response = response.model_copy(
+                update={
+                    "content": redact_for_model(str(response.content)),
+                }
+            )
+        if getattr(response, "tool_calls", None):
+            # The model may echo a credential it saw in the log straight back
+            # into a tool argument. Those arguments are replayed into the
+            # report context by ``_message_summary``, so they must be masked
+            # before the message enters AgentState.
+            response = response.model_copy(
+                update={
+                    "tool_calls": [
+                        {
+                            **call,
+                            "args": redact_payload(call.get("args", {})),
+                        }
+                        for call in response.tool_calls
+                    ]
+                }
+            )
         steps = list(state["steps"])
         steps.append(
             {
@@ -141,13 +218,13 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
         for message in new_tool_messages:
             try:
                 result = json.loads(message.content)
-                result = ToolResult.model_validate(result).model_dump()
+                # 工具结果同样可能带凭据（例如用户日志原样回显），
+                # 落库前统一脱敏，保证 observations 与 messages 一致。
+                result = redact_payload(
+                    ToolResult.model_validate(result).model_dump()
+                )
             except (json.JSONDecodeError, TypeError, ValidationError):
-                result = ToolResult(
-                    ok=False,
-                    error_code="INVALID_TOOL_RESULT",
-                    error="工具结果不是合法的统一结果结构",
-                ).model_dump()
+                result = _fallback_tool_result()
 
             tool_name = getattr(message, "name", None) or "unknown_tool"
             observations.append(
@@ -245,7 +322,7 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
             }
         )
         return {
-            "report": report.model_dump(),
+            "report": _redact_report(report),
             "steps": steps,
             "status": "completed",
             "error": None,

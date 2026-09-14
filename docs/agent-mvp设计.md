@@ -819,6 +819,41 @@ error
 
 日志和运行记录只保存参数摘要、工具名、错误码和必要的截断内容。
 
+### 12.2.1 脱敏落地位置（已实现）
+
+脱敏必须在**进入模型之前**和**落库之前**同时生效，否则模型上下文、数据库和接口响应会各自出现不同的版本。当前实现（`core/redaction.py`）：
+
+```text
+用户提交的 title / content
+→ execute_incident() 在 create_run() 之前统一脱敏并截断
+→ 脱敏后的文本才是 AgentState、模型上下文、MySQL 和接口响应的唯一版本
+→ 原始日志不进入 State、不落库、不返回
+
+工具结果
+→ tools 节点执行后立刻对 ToolMessage.content 脱敏再交回模型
+→ observe 节点写入 observations 前再对结果做递归脱敏
+→ 模型把凭据回显进 tool_calls.args 时，agent 节点同样递归脱敏
+   （否则 _message_summary 会把凭据带进报告节点上下文）
+
+最终报告
+→ 报告通过 Pydantic 校验后，对 summary / evidence / possible_causes /
+  troubleshooting_steps / references 再脱敏一次才写入 report
+```
+
+识别规则与取舍：
+
+| 规则 | 处理方式 |
+| --- | --- |
+| `Bearer <credential>` | 无论凭据形状，一律掩码 |
+| 三段式 JWT（`eyJ...`） | 无论出现在哪里都掩码 |
+| `password` / `passwd` / `pwd` / `secret` / `token` / `api_key` / `access_key` / `auth_key` / `client_secret` / `jwt_secret_key` 等键名 | 键名出现即可信，值一律掩码（`password=dev` 也是泄露） |
+| 连接串 `mysql://user:password@host/db` | 只掩码 `user:password`，**保留 host 和 database**，因为排查要用 |
+| `手机号` / `联系电话` / `phone` 等标签后的 11 位号码 | 掩码 |
+| `身份证号` / `id_card` 等标签后的 18 位号码 | 掩码 |
+| 裸 11 位数字（如订单号） | **不掩码**，避免把 `order_id=150204567` 之类的证据误删 |
+
+已知边界：`138-0013-8000` 这类带分隔符的手机号不会被命中；需要覆盖时应扩展标签规则而不是放宽裸数字匹配。
+
 ### 12.3 存储选择：独立 MySQL
 
 Agent MVP 使用独立 MySQL 数据库，不与 DevAtlas 的业务表混用：
