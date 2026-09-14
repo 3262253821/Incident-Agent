@@ -16,9 +16,26 @@ from ..schemas.tool import (
 )
 from .rag_client import RagGateway, RagGatewayError
 
+LOG_SIGNAL_PATTERNS: dict[str, re.Pattern[str]] = {
+    # 显式数字边界：`(?<!\d)` / `(?!\d)` 比 `\b` 更准确，\b 会把 "15020"
+    # 这类订单号里的 502 当成命中（反之也可能漏掉 5020 这类写法）。
+    "http_5xx": re.compile(r"(?<!\d)5\d{2}(?!\d)"),
+    "timeout": re.compile(r"timeout|timed out|超时", re.IGNORECASE),
+    "database_error": re.compile(r"mysql|database|数据库|deadlock|连接池", re.IGNORECASE),
+    "traceback": re.compile(r"traceback|stack trace|异常堆栈", re.IGNORECASE),
+}
+
+MAX_MATCHED_TEXT = 120
+MAX_SIGNALS_PER_TYPE = 3
+
 
 def analyze_log(log_text: str) -> dict[str, Any]:
-    """Extract known incident signals without claiming a root cause."""
+    """Extract known incident signals without claiming a root cause.
+
+    Each signal carries the matched fragment and its line number so the caller
+    (and the user-facing degraded summary) can point at a concrete line instead
+    of just asserting "a keyword matched".
+    """
 
     try:
         args = AnalyzeLogArgs(log_text=log_text)
@@ -30,21 +47,27 @@ def analyze_log(log_text: str) -> dict[str, Any]:
             data={"details": str(exc)},
         ).model_dump()
 
-    patterns = {
-        "http_502": r"\b502\b",
-        "timeout": r"timeout|超时",
-        "database_error": r"mysql|database|数据库",
-        "traceback": r"traceback",
-    }
+    lines = args.log_text.splitlines() or [args.log_text]
+    signals: list[dict[str, Any]] = []
 
-    signals: list[dict[str, str]] = []
-
-    for signal_type, pattern in patterns.items():
-        if re.search(pattern, args.log_text, re.IGNORECASE):
+    for signal_type, pattern in LOG_SIGNAL_PATTERNS.items():
+        hits = 0
+        for line_number, line in enumerate(lines, start=1):
+            if hits >= MAX_SIGNALS_PER_TYPE:
+                break
+            match = pattern.search(line)
+            if match is None:
+                continue
+            hits += 1
+            matched_text = match.group(0)
+            if len(matched_text) > MAX_MATCHED_TEXT:
+                matched_text = matched_text[:MAX_MATCHED_TEXT]
             signals.append(
                 {
                     "type": signal_type,
-                    "value": "命中日志关键词",
+                    "value": f"第 {line_number} 行命中 {matched_text}",
+                    "matched_text": matched_text,
+                    "line_number": line_number,
                 }
             )
 

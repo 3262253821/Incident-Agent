@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Mapping
 from typing import Any, Callable, Sequence
 
 from langchain_core.messages import (
@@ -17,6 +19,7 @@ from langgraph.prebuilt import ToolNode
 from pydantic import ValidationError
 
 from ..core.errors import describe_model_error
+from ..core.logging import get_logger
 from ..core.redaction import redact_for_model, redact_payload, redact_text
 from ..core.statuses import (
     InternalRunStatus,
@@ -33,6 +36,13 @@ from .evidence import (
     verify_report_evidence,
 )
 from .state import AgentState
+
+_LOGGER = get_logger("graph")
+
+# Tool names used when summarizing step results.
+ANALYZE_LOG_TOOL = "analyze_log"
+SEARCH_KNOWLEDGE_TOOL = "search_knowledge"
+GET_SERVICE_STATUS_TOOL = "get_service_status"
 
 REPORT_SYSTEM_PROMPT = """
 你是 Incident Agent 的结构化报告节点。
@@ -211,6 +221,17 @@ def _model_failure_step(
         }
     )
     normalized_error = f"{message}（{error_code}）"
+    _LOGGER.warning(
+        "模型调用失败，转为受控降级",
+        extra={
+            "run_id": state.get("run_id"),
+            "node": node,
+            "iteration": state["iteration"],
+            "status": RunStatus.DEGRADED,
+            "error_code": error_code,
+            "error": normalized_error,
+        },
+    )
     return {
         "steps": steps,
         "status": RunStatus.DEGRADED,
@@ -225,6 +246,106 @@ def _model_failure_step(
     }
 
 
+def _elapsed_ms(started_at: float | None) -> int | None:
+    """Milliseconds since a monotonic checkpoint, or None when unknown."""
+
+    if started_at is None:
+        return None
+    return max(0, int((time.monotonic() - started_at) * 1000))
+
+
+def _last_model_request_started_at(state: AgentState) -> float | None:
+    """Read the checkpoint the tools node wrote before the last model round."""
+
+    for step in reversed(state.get("steps") or []):
+        if step.get("action") == "model_request" and "_started_at" in step:
+            value = step.get("_started_at")
+            return value if isinstance(value, float) else None
+    return None
+
+
+def _tool_arguments_summary(
+    state: AgentState,
+    tool_call_id: str | None,
+) -> dict[str, Any] | None:
+    """Summarize a tool's arguments without persisting the raw text.
+
+    ``analyze_log`` receives the full incident log and ``search_knowledge``
+    receives a free-text query, so only lengths and identifier-like fields are
+    kept.
+    """
+
+    if not tool_call_id:
+        return None
+
+    for message in reversed(state.get("messages") or []):
+        if not isinstance(message, AIMessage):
+            continue
+        for call in getattr(message, "tool_calls", None) or []:
+            if call.get("id") != tool_call_id:
+                continue
+            args = call.get("args") or {}
+            if not isinstance(args, dict):
+                return None
+            summary: dict[str, Any] = {}
+            for key, value in args.items():
+                if isinstance(value, str):
+                    summary[f"{key}_length"] = len(value)
+                elif isinstance(value, (int, float, bool)) or value is None:
+                    summary[key] = value
+                else:
+                    summary[f"{key}_length"] = len(str(value))
+            return summary or None
+    return None
+
+
+def _tool_result_summary(
+    tool_name: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize a tool result: counts and codes only, never content."""
+
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    summary: dict[str, Any] = {"ok": bool(result.get("ok"))}
+
+    if tool_name == ANALYZE_LOG_TOOL:
+        signals = data.get("signals")
+        summary["signal_count"] = len(signals) if isinstance(signals, list) else 0
+        if isinstance(signals, list):
+            summary["signal_types"] = sorted(
+                {
+                    str(signal.get("type"))
+                    for signal in signals
+                    if isinstance(signal, Mapping) and signal.get("type")
+                }
+            )
+    elif tool_name == SEARCH_KNOWLEDGE_TOOL:
+        sources = data.get("sources")
+        summary["source_count"] = len(sources) if isinstance(sources, list) else 0
+        if isinstance(sources, list):
+            summary["document_ids"] = sorted(
+                {
+                    source.get("document_id")
+                    for source in sources
+                    if isinstance(source, Mapping)
+                    and isinstance(source.get("document_id"), int)
+                }
+            )
+    elif tool_name == GET_SERVICE_STATUS_TOOL:
+        if data.get("service_name") is not None:
+            summary["service_name"] = data.get("service_name")
+        if data.get("status") is not None:
+            summary["service_status"] = data.get("status")
+    else:
+        summary["data_keys"] = sorted(data.keys())
+
+    if not result.get("ok"):
+        error_code = result.get("error_code")
+        summary["error_code"] = error_code if isinstance(error_code, str) else None
+
+    return summary
+
+
 def make_agent_node(
     model: Any,
     tools: Sequence[BaseTool],
@@ -236,6 +357,7 @@ def make_agent_node(
 
     def agent_node(state: AgentState) -> dict[str, Any]:
         current_iteration = state["iteration"] + 1
+        started_at = time.monotonic()
 
         # Cooperative request-budget check: refuse to start another model round
         # once the budget is gone, instead of letting the caller time out while
@@ -261,6 +383,8 @@ def make_agent_node(
                 error_code=error_code,
                 message=message,
             )
+        model_duration_ms = _elapsed_ms(started_at)
+        tool_call_count = len(getattr(response, "tool_calls", []) or [])
 
         if getattr(response, "content", None):
             response = response.model_copy(
@@ -284,14 +408,30 @@ def make_agent_node(
                     ]
                 }
             )
+        _LOGGER.info(
+            "模型请求完成",
+            extra={
+                "run_id": state.get("run_id"),
+                "node": "agent",
+                "iteration": current_iteration,
+                "duration_ms": model_duration_ms,
+                "tool_call_count": tool_call_count,
+                "status": StepStatus.SUCCESS,
+            },
+        )
         steps = list(state["steps"])
         steps.append(
             {
                 "iteration": current_iteration,
                 "node": "agent",
                 "action": "model_request",
-                "tool_call_count": len(getattr(response, "tool_calls", []) or []),
+                "tool_call_count": tool_call_count,
+                "duration_ms": model_duration_ms,
                 "status": StepStatus.SUCCESS,
+                # 工具耗时的起点：工具在模型返回后立即执行，因此这里记录
+                # monotonic 起点，由 observe 节点算出每个工具的 duration_ms。
+                # 只有 append_steps 会持久化步骤，它不读这个键，因此不会入库。
+                "_started_at": started_at,
             }
         )
         return {
@@ -307,6 +447,8 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
     """Create a node that turns new ToolMessages into business observations."""
 
     def observe_tools_node(state: AgentState) -> dict[str, Any]:
+        started_at = time.monotonic()
+        previous_model_started_at = _last_model_request_started_at(state)
         all_tool_messages = [
             message
             for message in state["messages"]
@@ -332,6 +474,12 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
                 result = _fallback_tool_result()
 
             tool_name = getattr(message, "name", None) or "unknown_tool"
+            tool_duration_ms = _elapsed_ms(previous_model_started_at)
+            arguments_summary = _tool_arguments_summary(
+                state, message.tool_call_id
+            )
+            result_summary = _tool_result_summary(tool_name, result)
+
             observations.append(
                 {
                     "iteration": state["iteration"],
@@ -344,18 +492,50 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
                 {
                     "iteration": state["iteration"],
                     "node": "observe",
-                    "action": "observe_tool_result",
+                    "action": "tool_call",
                     "tool_name": tool_name,
                     "tool_call_id": message.tool_call_id,
+                    # 只保存脱敏后的摘要：原始 log_text 与 query 绝不入库。
+                    "arguments_summary": arguments_summary,
+                    "result_summary": result_summary,
+                    "duration_ms": tool_duration_ms,
                     "ok": result["ok"],
                     "status": StepStatus.SUCCESS if result["ok"] else StepStatus.FAILED,
                     "error_code": result["error_code"],
                 }
             )
+            _LOGGER.info(
+                "工具调用完成",
+                extra={
+                    "run_id": state.get("run_id"),
+                    "node": "observe",
+                    "iteration": state["iteration"],
+                    "tool_name": tool_name,
+                    "tool_call_id": message.tool_call_id,
+                    "duration_ms": tool_duration_ms,
+                    "status": StepStatus.SUCCESS
+                    if result["ok"]
+                    else StepStatus.FAILED,
+                    "error_code": result["error_code"],
+                },
+            )
 
             if not result["ok"]:
                 has_failure = True
                 latest_error = result["error"] or "工具执行失败或没有有效结果"
+
+        _LOGGER.info(
+            "观察整理完成",
+            extra={
+                "run_id": state.get("run_id"),
+                "node": "observe",
+                "iteration": state["iteration"],
+                "duration_ms": _elapsed_ms(started_at),
+                "observation_count": len(new_tool_messages),
+                "status": StepStatus.FAILED if has_failure else StepStatus.SUCCESS,
+                "error_code": latest_error is not None and "TOOL_FAILED" or None,
+            },
+        )
 
         return {
             "observations": observations,
@@ -374,6 +554,7 @@ def make_report_node(
     """Create a node that generates and validates an IncidentReport."""
 
     def report_node(state: AgentState) -> dict[str, Any]:
+        started_at = time.monotonic()
         # The report is a second model round; it must respect the same budget.
         if deadline is not None:
             try:
@@ -403,12 +584,25 @@ def make_report_node(
             response = report_model.invoke(report_messages)
             report = parse_report(response.content)
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as exc:
+            report_duration_ms = _elapsed_ms(started_at)
             if isinstance(exc, json.JSONDecodeError):
                 error = f"报告不是合法 JSON：{exc}"
                 error_code = StepErrorCode.INVALID_JSON
             else:
                 error = f"报告结构校验失败：{exc}"
                 error_code = StepErrorCode.INVALID_REPORT
+            _LOGGER.warning(
+                "报告生成或校验失败",
+                extra={
+                    "run_id": state.get("run_id"),
+                    "node": "report",
+                    "iteration": state["iteration"],
+                    "duration_ms": report_duration_ms,
+                    "status": StepStatus.FAILED,
+                    "error_code": error_code,
+                    "error": error,
+                },
+            )
             steps.append(
                 {
                     "iteration": state["iteration"],
@@ -434,8 +628,21 @@ def make_report_node(
                 "iteration": state["iteration"],
                 "node": "report",
                 "action": "validate_report",
+                "duration_ms": _elapsed_ms(started_at),
                 "status": StepStatus.SUCCESS,
             }
+        )
+        _LOGGER.info(
+            "报告校验通过",
+            extra={
+                "run_id": state.get("run_id"),
+                "node": "report",
+                "iteration": state["iteration"],
+                "duration_ms": _elapsed_ms(started_at),
+                "status": StepStatus.SUCCESS,
+                "evidence_count": len(report.evidence),
+                "confidence": report.confidence,
+            },
         )
 
         # A structurally valid report is not the same as an evidence-backed

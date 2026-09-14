@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
 from ..core.errors import describe_model_error
+from ..core.logging import get_logger
 from ..core.redaction import redact_for_model
 from ..core.statuses import RunStatus
 from ..graph.deadline import RequestDeadline
@@ -27,6 +28,8 @@ from .authorizer import (
 from .llm import create_chat_model
 from .rag_client import HttpRagGateway, RagGateway
 from .storage import append_steps, create_run, finish_run
+
+_LOGGER = get_logger("service")
 
 AGENT_SYSTEM_PROMPT = """
 你是 Incident Agent 故障分析助手。
@@ -152,6 +155,19 @@ def execute_incident(
         )
     )
     run_id = str(uuid4())
+    _LOGGER.info(
+        "开始执行故障分析",
+        extra={
+            "run_id": run_id,
+            "owner_user_id": user.id,
+            "knowledge_base_id": request.knowledge_base_id,
+            "top_k": effective_top_k,
+            "max_iterations": settings.max_iterations,
+            "request_timeout_seconds": settings.request_timeout_seconds,
+            "model_name": settings.model,
+            "status": RunStatus.RUNNING,
+        },
+    )
     owned_gateway = rag_gateway is None
     gateway: RagGateway | None = None
 
@@ -212,6 +228,19 @@ def execute_incident(
                     f"；本次请求已耗时 {deadline.elapsed_seconds:.1f} 秒"
                     f"（上限 {deadline.timeout_seconds:.0f} 秒）"
                 )
+            _LOGGER.warning(
+                "Graph 执行失败，已转为受控降级",
+                extra={
+                    "run_id": run_id,
+                    "error_code": error_code,
+                    "status": RunStatus.DEGRADED,
+                    "elapsed_ms": int(deadline.elapsed_seconds * 1000),
+                    "error": summary_error,
+                },
+                # 只记录异常类名（由 formatter 处理），不记录 traceback：
+                # traceback 可能包含文件路径与参数。
+                exc_info=True,
+            )
             final_state = {
                 **state,
                 "status": RunStatus.DEGRADED,
@@ -239,5 +268,20 @@ def execute_incident(
         report=final_state["report"],
         error=final_state["error"],
         degraded_summary=final_state.get("degraded_summary"),
+    )
+    _LOGGER.info(
+        "故障分析结束",
+        extra={
+            "run_id": run_id,
+            "status": final_state["status"],
+            "iteration": final_state["iteration"],
+            "observation_count": len(final_state["observations"] or []),
+            "step_count": len(final_state["steps"] or []),
+            "has_report": final_state["report"] is not None,
+            "has_degraded_summary": final_state.get("degraded_summary")
+            is not None,
+            "elapsed_ms": int(deadline.elapsed_seconds * 1000),
+            "error": final_state["error"],
+        },
     )
     return _response_from_state(final_state)

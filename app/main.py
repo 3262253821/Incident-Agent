@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .incident_agent.core.config import get_settings
+from .incident_agent.core.logging import configure_logging, get_logger
 from .incident_agent.db.session import SessionLocal, check_database_connection
 from .incident_agent.routers.auth import router as auth_router
 from .incident_agent.routers.incidents import router as incidents_router
@@ -18,7 +18,8 @@ from .incident_agent.services.storage import reclaim_stale_runs
 
 settings = get_settings()
 
-logger = logging.getLogger("incident_agent.startup")
+configure_logging()
+logger = get_logger("startup")
 
 
 @asynccontextmanager

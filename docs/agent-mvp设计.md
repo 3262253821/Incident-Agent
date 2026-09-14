@@ -1243,6 +1243,55 @@ Git
 总耗时大致是多少？
 ```
 
+### 15.4 已实现：结构化日志（P1-1）
+
+实现在 `core/logging.py`，一个 logger（`incident_agent`）+ 一个 stdout handler + JSON formatter，**每行一个 JSON 对象**：
+
+```text
+INCIDENT_LOG_LEVEL   默认 INFO
+INCIDENT_LOG_FORMAT  默认 json，可设为 text 便于本地阅读
+```
+
+埋点位置与字段：
+
+| 位置 | 关键字段 |
+| --- | --- |
+| 应用启动（`main.py` lifespan）| `interrupted_reclaimed` |
+| `execute_incident` 开始 | `run_id`、`owner_user_id`、`knowledge_base_id`、`top_k`、`max_iterations`、`request_timeout_seconds`、`model_name` |
+| `agent` 节点 | `run_id`、`node`、`iteration`、`duration_ms`、`tool_call_count` |
+| `observe` 节点（每个工具一条 + 汇总一条）| 追加 `tool_name`、`tool_call_id`、`error_code`、`observation_count` |
+| `report` 节点 | `duration_ms`、`evidence_count`、`confidence`；失败时记 `error_code` |
+| 模型调用失败 | `error_code`（`MODEL_*` / `REQUEST_TIMEOUT`），异常只记**类名**不记 traceback |
+| `execute_incident` 结束 | `status`、`iteration`、`observation_count`、`step_count`、`has_report`、`has_degraded_summary`、`elapsed_ms` |
+
+两道脱敏防线，避免"忘了过滤"就泄露：
+
+1. **调用方**只传长度与计数（不传原始文本）；
+2. **formatter** 对每个 `extra` 字段做两件事：字段名命中 `SENSITIVE_KEYS` 直接写 `[已脱敏]`，否则走 `sanitize()` 递归掩码字典键名并截断长字符串。
+
+> 第 2 条里的"字段名判断"是实测补上的：`sanitize()` 只对**字典的键名**生效，而 formatter 是逐字段取值的，所以 `logger.info(..., extra={"password": "devpass123"})` 最初会把明文写出去——单元测试没覆盖到这个路径，是运行脚本时才发现的。
+
+### 15.5 已实现：步骤轨迹的摘要与耗时（P1-1-2）
+
+`AgentStep` 的 `arguments_summary` / `result_summary` / `duration_ms` 此前长期为空，现在：
+
+- **耗时**：`agent` 节点记录模型往返耗时；工具耗时由 `observe` 节点从模型返回时刻起算（起点作为 `_started_at` 写在 `model_request` 步骤里，`append_steps` 不读该键，因此不会入库）；报告节点记录生成+校验耗时。
+- **参数摘要**：字符串参数只记长度（`log_text_length`、`query_length`），数字/布尔原样保留——原始日志与 query 永不入库。
+- **结果摘要**：只记计数与标识——`analyze_log` 记 `signal_count` + `signal_types`，`search_knowledge` 记 `source_count` + `document_ids`，`get_service_status` 记 `service_name` + `service_status`，失败时追加 `error_code`。
+
+### 15.6 已实现：`analyze_log` 的信号解释性（P1-1-4）
+
+信号从"命中了某种关键词"升级为"在第几行命中了什么"：
+
+```text
+每个信号：type / matched_text（≤120 字符）/ line_number / value（"第 N 行命中 X"）
+类型：http_5xx / timeout / database_error / traceback
+每类最多 3 条，避免长日志刷屏
+```
+
+正则改用**显式数字边界** `(?<!\d)5\d{2}(?!\d)`：原先的 `\b502\b` 只是碰巧挡住了 `15020`，而 `5\d{2}` 同时覆盖 502/503/504 等 5xx，也不会把订单号里的数字当命中。
+
+
 ---
 
 ## 16. 异常和安全策略
