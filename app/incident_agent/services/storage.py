@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..core.statuses import RunStatus
 from ..models import AgentRun, AgentStep
 
 
@@ -30,7 +31,7 @@ def create_run(
         title=title.strip(),
         input_content=input_content.strip(),
         knowledge_base_id=knowledge_base_id,
-        status="running",
+        status=RunStatus.RUNNING,
         model_name=model_name,
         iteration=0,
         max_iterations=max_iterations,

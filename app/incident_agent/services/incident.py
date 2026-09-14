@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
 from ..core.redaction import redact_for_model
+from ..core.statuses import RunStatus
 from ..graph.state import AgentState
 from ..graph.workflow import build_graph_with_gateway
 from ..models import AgentRun
@@ -85,7 +86,7 @@ def _initial_state(
         "steps": [],
         "iteration": 0,
         "max_iterations": max_iterations,
-        "status": "running",
+        "status": RunStatus.RUNNING,
         "error": None,
         "report": None,
     }
@@ -195,7 +196,7 @@ def execute_incident(
         except Exception:
             final_state = {
                 **state,
-                "status": "degraded",
+                "status": RunStatus.DEGRADED,
                 "error": "Agent 执行失败，请检查模型或外部服务状态",
             }
     finally:

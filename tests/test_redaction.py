@@ -305,7 +305,10 @@ def test_report_free_text_is_masked_before_it_is_returned():
         }
     )
 
-    assert result["status"] == "completed"
+    # 这个用例没有调用任何工具，因此 P0-3-1 之后状态是
+    # insufficient_evidence；报告本身仍必须存在且已完成脱敏。
+    assert result["status"] == "insufficient_evidence"
+    assert result["report"] is not None
     assert_no_raw_secrets(result["report"])
     assert_contains_mask(result["report"])
 

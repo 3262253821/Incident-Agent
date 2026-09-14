@@ -17,6 +17,12 @@ from langgraph.prebuilt import ToolNode
 from pydantic import ValidationError
 
 from ..core.redaction import redact_for_model, redact_payload, redact_text
+from ..core.statuses import (
+    InternalRunStatus,
+    RunStatus,
+    StepErrorCode,
+    StepStatus,
+)
 from ..schemas.incident import IncidentReport
 from ..schemas.tool import ToolResult
 from .state import AgentState
@@ -106,6 +112,21 @@ def _fallback_tool_result() -> dict[str, Any]:
     ).model_dump()
 
 
+def _successful_observation_count(state: AgentState) -> int:
+    """Count tool observations that actually produced evidence.
+
+    A report whose supporting tools all failed carries no more authority than a
+    report with no tools at all, so only ``ok=True`` observations count.
+    """
+
+    count = 0
+    for observation in state.get("observations") or []:
+        result = observation.get("result") if isinstance(observation, dict) else None
+        if isinstance(result, dict) and result.get("ok"):
+            count += 1
+    return count
+
+
 def _redact_report(report: IncidentReport) -> dict[str, Any]:
     """Mask credentials in every free-text field before persistence."""
 
@@ -186,7 +207,7 @@ def make_agent_node(model: Any, tools: Sequence[BaseTool]) -> Callable[[AgentSta
                 "node": "agent",
                 "action": "model_request",
                 "tool_call_count": len(getattr(response, "tool_calls", []) or []),
-                "status": "success",
+                "status": StepStatus.SUCCESS,
             }
         )
         return {
@@ -243,7 +264,7 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
                     "tool_name": tool_name,
                     "tool_call_id": message.tool_call_id,
                     "ok": result["ok"],
-                    "status": "success" if result["ok"] else "failed",
+                    "status": StepStatus.SUCCESS if result["ok"] else StepStatus.FAILED,
                     "error_code": result["error_code"],
                 }
             )
@@ -255,7 +276,7 @@ def make_observe_node() -> Callable[[AgentState], dict[str, Any]]:
         return {
             "observations": observations,
             "steps": steps,
-            "status": "tool_failed" if has_failure else state["status"],
+            "status": InternalRunStatus.TOOL_FAILED if has_failure else state["status"],
             "error": latest_error,
         }
 
@@ -288,13 +309,13 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
                     "iteration": state["iteration"],
                     "node": "report",
                     "action": "validate_report",
-                    "status": "failed",
-                    "error_code": "INVALID_JSON",
+                    "status": StepStatus.FAILED,
+                    "error_code": StepErrorCode.INVALID_JSON,
                 }
             )
             return {
                 "steps": steps,
-                "status": "report_validation_failed",
+                "status": RunStatus.REPORT_VALIDATION_FAILED,
                 "error": f"报告不是合法 JSON：{exc}",
             }
         except (ValidationError, TypeError, ValueError) as exc:
@@ -303,13 +324,13 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
                     "iteration": state["iteration"],
                     "node": "report",
                     "action": "validate_report",
-                    "status": "failed",
-                    "error_code": "INVALID_REPORT",
+                    "status": StepStatus.FAILED,
+                    "error_code": StepErrorCode.INVALID_REPORT,
                 }
             )
             return {
                 "steps": steps,
-                "status": "report_validation_failed",
+                "status": RunStatus.REPORT_VALIDATION_FAILED,
                 "error": f"报告结构校验失败：{exc}",
             }
 
@@ -318,13 +339,37 @@ def make_report_node(report_model: Any) -> Callable[[AgentState], dict[str, Any]
                 "iteration": state["iteration"],
                 "node": "report",
                 "action": "validate_report",
-                "status": "success",
+                "status": StepStatus.SUCCESS,
             }
         )
+
+        # A structurally valid report is not the same as an evidence-backed
+        # report. Without at least one successful tool observation the model is
+        # writing from the raw prompt alone, so the run must not be presented as
+        # a completed analysis.
+        successful_observations = _successful_observation_count(state)
+        if successful_observations == 0:
+            report = report.model_copy(update={"confidence": "low"})
+            steps.append(
+                {
+                    "iteration": state["iteration"],
+                    "node": "report",
+                    "action": "check_evidence_support",
+                    "status": StepStatus.FAILED,
+                    "error_code": StepErrorCode.NO_TOOL_EVIDENCE,
+                }
+            )
+            return {
+                "report": _redact_report(report),
+                "steps": steps,
+                "status": RunStatus.INSUFFICIENT_EVIDENCE,
+                "error": "未取得任何成功的工具证据，报告仅基于用户描述生成",
+            }
+
         return {
             "report": _redact_report(report),
             "steps": steps,
-            "status": "completed",
+            "status": RunStatus.COMPLETED,
             "error": None,
         }
 
@@ -340,12 +385,12 @@ def degrade_node(state: AgentState) -> dict[str, Any]:
             "iteration": state["iteration"],
             "node": "degrade",
             "action": "finish_degraded",
-            "status": "degraded",
+            "status": RunStatus.DEGRADED,
         }
     )
     return {
         "steps": steps,
-        "status": "degraded",
+        "status": RunStatus.DEGRADED,
         "error": state["error"] or "执行失败或没有有效结果",
     }
 
@@ -366,12 +411,12 @@ def limit_node(
             "iteration": state["iteration"],
             "node": "limit",
             "action": "stop_at_max_iterations",
-            "status": "max_iterations",
+            "status": RunStatus.MAX_ITERATIONS,
         }
     )
     return {
         "steps": steps,
-        "status": "max_iterations",
+        "status": RunStatus.MAX_ITERATIONS,
         "error": f"达到最大模型请求次数：{effective_max_iterations}",
     }
 
@@ -397,4 +442,4 @@ def route_after_agent(
 def route_after_observe(state: AgentState) -> str:
     """Stop on the first failed tool result; otherwise ask the model again."""
 
-    return "degrade" if state["status"] == "tool_failed" else "agent"
+    return "degrade" if state["status"] == InternalRunStatus.TOOL_FAILED else "agent"

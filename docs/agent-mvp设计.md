@@ -542,14 +542,15 @@ steps：为了调试、审计和面试展示，记录执行过程
 
 ### 8.4 状态值
 
-建议统一使用：
+统一使用（常量定义在 `core/statuses.py`，前端映射在 `web/src/constants/status.ts`）：
 
 ```text
-running
-completed
-degraded
-max_iterations
-report_validation_failed
+running                     运行记录已创建，Graph 未结束
+completed                   报告通过校验，且至少有一条成功的工具观察
+insufficient_evidence       报告通过校验，但没有任何成功的工具观察
+degraded                    工具失败，或模型/外部依赖不可用
+report_validation_failed    报告节点无法产出合法报告
+max_iterations              达到模型请求轮数上限
 ```
 
 内部临时状态可以使用：
@@ -559,6 +560,23 @@ tool_failed
 ```
 
 对外返回时统一映射成 `degraded`，避免把内部节点状态暴露给 API 使用方。
+
+#### `insufficient_evidence` 的判定规则
+
+结构合法不等于结论可信。报告节点在通过 Pydantic 校验后，还要检查本次运行是否真的取得过工具证据：
+
+```text
+成功工具观察数 = observations 中 result.ok == True 的数量
+成功工具观察数 == 0
+→ 强制把报告 confidence 改为 low（只降不升，模型要求 high 也不放行）
+→ status = insufficient_evidence
+→ 追加一条 step：action=check_evidence_support, error_code=NO_TOOL_EVIDENCE
+→ 前端不显示 COMPLETED 徽章，改为 NO TOOL EVIDENCE 并提示"报告仅依据用户描述生成"
+```
+
+只有 `ok=True` 的观察才算证据：全部工具都失败的报告，与完全没有工具的报告一样不可信。混合场景（既有成功也有失败）仍算 `completed`。
+
+不允许的做法：保持 `completed` 只把 `confidence` 调成 `low`。用户看到的仍然是一个绿色完成徽章，问题等于没解决。
 
 ---
 
