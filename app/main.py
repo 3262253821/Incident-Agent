@@ -8,6 +8,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .incident_agent.app_errors import (
+    register_exception_handlers,
+    request_id_middleware,
+)
 from .incident_agent.core.config import get_settings
 from .incident_agent.core.logging import configure_logging, get_logger
 from .incident_agent.db.session import SessionLocal, check_database_connection
@@ -57,8 +61,13 @@ app.add_middleware(
     allow_origins=list(settings.web_origins),
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
+
+# 统一错误响应：安全文案 + error_code + request_id，服务端日志带同一 request_id。
+register_exception_handlers(app)
+app.middleware("http")(request_id_middleware)
 
 app.include_router(auth_router)
 app.include_router(incidents_router)

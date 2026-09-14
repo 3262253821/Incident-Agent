@@ -45,6 +45,14 @@ class DevAtlasAuthClient:
             raise DevAtlasAuthError(401, "用户名或密码错误")
         if response.status_code == 403:
             raise DevAtlasAuthError(403, "用户已被禁用")
+        # 上游的 422 / 429 / 5xx 必须分开表达：一律折叠成 502 会让调用方
+        # 无法区分"自己传错了参数"、"被限流"和"上游真的挂了"。
+        if response.status_code == 422:
+            raise DevAtlasAuthError(422, "登录参数不符合 DevAtlas 要求")
+        if response.status_code == 429:
+            raise DevAtlasAuthError(429, "登录请求过于频繁，请稍后重试")
+        if response.status_code >= 500:
+            raise DevAtlasAuthError(503, "DevAtlas 登录服务暂不可用")
         if response.is_error:
             raise DevAtlasAuthError(502, "DevAtlas 登录服务返回错误")
 
@@ -66,6 +74,10 @@ class DevAtlasAuthClient:
 
         if response.status_code in (401, 403):
             raise DevAtlasAuthError(401, "登录状态无效或已过期")
+        if response.status_code == 429:
+            raise DevAtlasAuthError(429, "用户验证请求过于频繁，请稍后重试")
+        if response.status_code >= 500:
+            raise DevAtlasAuthError(503, "DevAtlas 用户验证服务暂不可用")
         if response.is_error:
             raise DevAtlasAuthError(502, "DevAtlas 用户验证服务返回错误")
 
