@@ -32,6 +32,7 @@ from .authorizer import (
 )
 from .llm import create_chat_model, create_report_model
 from .rag_client import HttpRagGateway, RagGateway
+from .step_payload import step_payload_from_state
 from .storage import append_steps, create_run, finish_run
 
 _LOGGER = get_logger("service")
@@ -125,6 +126,14 @@ def _response_from_state(state: AgentState, run: AgentRun | None = None) -> RunR
     ``run`` is the persisted row: the timestamps and the duration shown to the
     caller must be the ones the database actually holds, not a second clock read
     taken in the request path.
+
+    Steps go through the same projection as ``GET /api/v1/runs/{run_id}``
+    (``services/step_payload.py``): the Graph keeps extra bookkeeping keys (its
+    ``_started_at`` monotonic origin, ``ok``, ``attempts``, ``tool_call_count``,
+    ``unverified_count``) and never writes a ``step_index`` — leaking those would
+    make the two endpoints answer the same question with two different shapes
+    (P1-5-2). The index assigned here is 1..N in state order, i.e. exactly the
+    numbering ``append_steps`` persists.
     """
 
     raw_report = state.get("report")
@@ -138,7 +147,10 @@ def _response_from_state(state: AgentState, run: AgentRun | None = None) -> RunR
         completed_at=run.completed_at if run is not None else None,
         report=IncidentReport.model_validate(raw_report) if raw_report else None,
         observations=state["observations"],
-        steps=state["steps"],
+        steps=[
+            step_payload_from_state(step, step_index=index)
+            for index, step in enumerate(state.get("steps") or [], start=1)
+        ],
         error=state["error"],
         degraded_summary=(
             DegradedSummary.model_validate(raw_summary) if raw_summary else None

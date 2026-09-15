@@ -273,6 +273,9 @@ class RunResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     report: IncidentReport | None = None
+    # 轨迹字段是 JSON dict（数据库列就是 JSON），OpenAPI 只能把它们描述成
+    # ``array<object>``。具体字段由 ``services/step_payload.py`` 的两个投影函数
+    # 统一，``POST /analyze`` 与 ``GET /runs/{run_id}`` 共用一份契约（P1-5-2）。
     observations: list[dict[str, Any]] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None

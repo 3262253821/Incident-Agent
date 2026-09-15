@@ -19,6 +19,7 @@ from ..schemas.incident import (
     RunSummaryPage,
     summarize_error,
 )
+from ..services.step_payload import step_payload_from_row
 from ..services.storage import (
     RunHistoryFilter,
     get_run_for_owner,
@@ -114,22 +115,8 @@ def _to_response(run) -> RunResponse:
         completed_at=run.completed_at,
         report=run.report,
         observations=run.observations or [],
-        steps=[
-            {
-                "step_index": step.step_index,
-                "iteration": step.iteration,
-                "node": step.node,
-                "action": step.action,
-                "tool_name": step.tool_name,
-                "tool_call_id": step.tool_call_id,
-                "arguments_summary": step.arguments_summary,
-                "result_summary": step.result_summary,
-                "status": step.status,
-                "error_code": step.error_code,
-                "duration_ms": step.duration_ms,
-            }
-            for step in run.steps
-        ],
+        # 与 POST /analyze 共用同一个投影函数（P1-5-2）：步骤轨迹只有一份公开契约。
+        steps=[step_payload_from_row(step) for step in run.steps],
         error=run.error,
         interrupted=run.interrupted_at is not None,
         degraded_summary=run.degraded_summary,
