@@ -45,7 +45,7 @@ const loadingKnowledgeBases = ref(false)
 const knowledgeBaseError = ref('')
 const topK = ref(5)
 
-const error = computed(() => incident.error)
+const error = computed(() => incident.error || auth.error)
 const runStatus = computed(() => incident.result?.status)
 const runLabel = computed(() => {
   if (incident.running) return 'ANALYZING'
@@ -125,6 +125,14 @@ async function loadKnowledgeBases() {
   }
 }
 
+/**
+ * 提交分析（P1-5-4 去掉了这里的登出判断）。
+ *
+ * 旧写法是 `if (apiErrorMessage(failure).includes('401')) auth.signOut()`——把错误
+ * 文案当控制流：`apiErrorMessage()` 优先返回后端的中文 `detail`，这条判断在真实响应
+ * 上根本不会命中。现在**只有响应拦截器**按 HTTP 状态码处理会话失效（清 Token +
+ * 带 redirect 跳登录页），这里只负责让错误留在 store 里给界面用。
+ */
 async function submit(payload: {
   title: string
   content: string
@@ -133,8 +141,8 @@ async function submit(payload: {
 }) {
   try {
     await incident.analyze(payload)
-  } catch (failure) {
-    if (apiErrorMessage(failure).includes('401')) auth.signOut()
+  } catch {
+    // 错误文案已经写进 store（`incident.analyze` 的 catch），这里不做第二次处理。
   }
 }
 

@@ -9,13 +9,16 @@
  * 这条链路此前完全靠人工 review，也正是 P1-5-3 要补的部分。
  *
  * 依赖（鉴权、健康检查、历史列表、知识库列表）全部 mock：这里验证的是无障碍
- * 行为，不是后端契约。
+ * 行为，不是后端契约。**例外是"网络故障不清 Token"**（P1-5-4）：它读取的正是
+ * `auth.error`，而 `auth.error` 由 `restore()` 按"认证失败 / 连接失败"分流后写入，
+ * 所以那几条用例断言的是真实 store，只把 API 层换成受控的失败。
  */
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import IncidentWorkspaceView from '../src/views/IncidentWorkspaceView.vue'
+import { useAuthStore } from '../src/stores/auth'
 import { useIncidentStore } from '../src/stores/incident'
 import { makeRun } from './helpers'
 
@@ -25,8 +28,13 @@ vi.mock('../src/api/incidents', () => ({ analyzeIncident: vi.fn() }))
 vi.mock('../src/api/runs', () => ({ getRun: vi.fn(), listRuns: vi.fn() }))
 vi.mock('../src/api/auth', () => ({ currentUser: vi.fn(), login: vi.fn() }))
 vi.mock('../src/api/client', () => ({
+  TOKEN_STORAGE_KEY: 'incident_agent_token',
   apiErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : '发生未知错误，请稍后重试。',
+  // 与生产同一条判据：`response.status` 才是 HTTP 状态（见 apiClient.spec.ts）。
+  isAuthFailure: (error: unknown) =>
+    [401, 403].includes((error as { response?: { status?: number } })?.response?.status ?? 0),
+  onSessionExpired: vi.fn(),
 }))
 
 const { checkHealth } = await import('../src/api/system')
@@ -72,6 +80,11 @@ beforeEach(() => {
 
 function incidentStore() {
   return useIncidentStore(pinia)
+}
+
+/** 模拟真实 axios 错误：`response.status` 是 HTTP 状态，`message` 是文案。 */
+function httpError(status: number, message: string) {
+  return Object.assign(new Error(message), { response: { status } })
 }
 
 afterEach(() => {
@@ -143,12 +156,41 @@ describe('IncidentWorkspaceView accessibility', () => {
 
   it('令牌无效（restore 失败）时不拉知识库，界面仍保持可用', async () => {
     localStorage.setItem('incident_agent_token', 'expired')
-    vi.mocked(currentUser).mockRejectedValue(new Error('token 已过期'))
+    vi.mocked(currentUser).mockRejectedValue(httpError(401, '登录状态无效或已过期'))
 
     const wrapper = await mountWorkspace()
 
     expect(listKnowledgeBases).not.toHaveBeenCalled()
     expect(wrapper.find('.intake-panel').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('后端不可达（不是 401）时保留 Token，并把连接失败提示显示在告警区（P1-5-4）', async () => {
+    localStorage.setItem('incident_agent_token', 'good-token')
+    vi.mocked(currentUser).mockRejectedValue(new Error('无法连接 Incident Agent API。'))
+
+    const wrapper = await mountWorkspace()
+
+    // 网络故障不清 Token——这是 P1-5-4 的核心区别。
+    expect(localStorage.getItem('incident_agent_token')).toBe('good-token')
+    expect(useAuthStore(pinia).token).toBe('good-token')
+    expect(listKnowledgeBases).not.toHaveBeenCalled()
+    // 不能安静失败：用户必须看得到"为什么没登录进去"。这里取的是底部那条
+    // `.bottom-error`（表单自己的 `[role=alert]` 装的是知识库相关的提示）。
+    expect(wrapper.get('.bottom-error').text()).toContain('无法连接 Incident Agent API。')
+
+    wrapper.unmount()
+  })
+
+  it('令牌失效（401）时清 Token，让路由守卫把用户带回登录页（P1-5-4）', async () => {
+    localStorage.setItem('incident_agent_token', 'expired')
+    vi.mocked(currentUser).mockRejectedValue(httpError(401, '登录状态无效或已过期'))
+
+    const wrapper = await mountWorkspace()
+
+    expect(localStorage.getItem('incident_agent_token')).toBeNull()
+    expect(useAuthStore(pinia).token).toBe('')
 
     wrapper.unmount()
   })
