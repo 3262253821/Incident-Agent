@@ -18,6 +18,9 @@ import io
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.incident_agent.app_errors import (
     REQUEST_ID_HEADER,
@@ -25,6 +28,7 @@ from app.incident_agent.app_errors import (
     message_for,
 )
 from app.incident_agent.core.logging import configure_logging
+from app.incident_agent.db.session import Base, get_db
 from app.incident_agent.dependencies import get_access_token, get_current_user
 from app.incident_agent.schemas.auth import LoginRequest, UserPublic
 from app.incident_agent.services.auth import (
@@ -64,10 +68,31 @@ def client():
     def _boom():  # pragma: no cover - 只在通过异常处理器时被调用
         raise RuntimeError(f"internal detail {SECRET} at E:\\secret\\file.py")
 
+    # 这个 fixture 必须自给自足：`/api/v1/runs/{run_id}` 会真的查库，而开发机上的
+    # .env 指向真实 MySQL，于是"本地通过"其实依赖了那台机器上已经建好的表。
+    # 2026-09-15 在无 .env 的干净检出里复现 CI 时这里先炸：SQLite 内存库没有表 →
+    # "no such table: agent_runs" → 本应是 404 的用例变成 500。
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def override_db():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
     app.dependency_overrides[get_current_user] = make_user
     app.dependency_overrides[get_access_token] = lambda: "token"
+    app.dependency_overrides[get_db] = override_db
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
+    engine.dispose()
 
 
 # --------------------------------------------------------------------------

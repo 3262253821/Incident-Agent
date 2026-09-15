@@ -104,13 +104,12 @@ def test_report_model_can_differ_from_the_decision_model():
 
 
 def test_report_model_falls_back_to_the_decision_model_name(monkeypatch):
-    for name in (
-        "INCIDENT_AGENT_MODEL",
-        "INCIDENT_AGENT_REPORT_MODEL",
-        "INCIDENT_DATABASE_URL",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    # 被测的是"报告模型回落到决策模型名"，与数据库无关；但 `load_settings()` 要求
+    # 数据库配置有出处，而 CI 的检出里没有 .env。这里显式给一个 SQLite URL，
+    # 避免测试悄悄依赖开发机的 .env（2026-09-15 复现 CI 时就是这条先失败）。
+    monkeypatch.delenv("INCIDENT_AGENT_REPORT_MODEL", raising=False)
     monkeypatch.setenv("INCIDENT_AGENT_MODEL", "only-one-model")
+    monkeypatch.setenv("INCIDENT_DATABASE_URL", "sqlite+pysqlite:///:memory:")
 
     settings = load_settings()
 

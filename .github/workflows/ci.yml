@@ -21,6 +21,14 @@ jobs:
     defaults:
       run:
         working-directory: .
+    env:
+      # 为什么需要这一行（2026-09-15 实测的 CI 失败原因）：
+      # 检出里**没有 .env**（被 .gitignore 挡住），而 core/config.py 在没有
+      # INCIDENT_DATABASE_URL 时会强制要求 INCIDENT_DB_USER / _PASSWORD / _NAME，
+      # 于是 `import app.main` 直接抛 RuntimeError，20 个测试文件在**收集阶段**
+      # 就全错。全部测试用 SQLite 内存库，因此这里只给一个"配置有出处"的 URL，
+      # 不连真实 MySQL；本地之所以看不到这个问题，是因为工作副本里有 .env。
+      INCIDENT_DATABASE_URL: sqlite+pysqlite:///:memory:
 
     steps:
       - uses: actions/checkout@v5
