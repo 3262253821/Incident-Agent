@@ -2,9 +2,9 @@
 
 > **用途**：上下文压缩、会话切换或换模型后的**第一恢复入口**。新会话读完本文即可接手，不需要回溯历史对话。
 >
-> **最后更新**：2026-09-15（**交接刷新：为"我新开会话"做的一次逐项核对**；本版记录的状态在提交 `167ca03` 上核实过）。当前进度：**P1-5-3 前端测试与可访问性已完成**（引入 Vitest/组件测试并把 50 条用例接进 CI，补 `:focus-visible`、`role=dialog`/ESC/焦点管理、`aria-live`、`prefers-reduced-motion`），此前 P1-5-1、P1-5-2、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成。**核对结果**：未完成项 **14 项**、后端测试基线 **381 passed** + 前端 **50 passed**、`git rev-list --count HEAD` = **64**、工作区干净、local == origin、下一步 **P1-5-4**。
+> **最后更新**：2026-09-15（**P1-5-4 完成：统一 401 处理并区分网络故障**）。当前进度：**P1-5-4 已完成**（响应拦截器按 HTTP 状态码 + 统一错误契约的 `error_code` 清会话并带 `redirect` 跳登录页；后端不可达/超时/上游 5xx 只提示、保留 Token；前端测试 50 → **97 条**），此前 P1-5-3、P1-5-2、P1-5-1、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成。**下一步 = P1-5-5**（历史抽屉筛选/重跑/失败状态细分）。准确数字请跑 §12.1 的三条命令。
 >
-> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`b0400fe`**（P1-5-3；P1-5-2 是 `730268d`、P1-5-1 是 `39f1fe2`），其后是文档提交 `d02610d`（勾选与完成记录）、`167ca03`（记提交号与 CI 结果）。**文档提交会让 HEAD 每轮往后走一两个，所以交接时的准确 HEAD 请直接跑 `git log --oneline -1`（工作区应当是干净的）**；每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
+> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`b0400fe`**（P1-5-3），P1-5-4 的代码提交紧随其后（哈希见 `docs/项目补充优化.md` 的完成记录）；**准确 HEAD 请直接跑 `git log --oneline -5`（工作区应当是干净的）**，写死哈希会立刻过时。每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。
 >
 > **文档地图（新会话先看这张表）**：
 >
@@ -15,7 +15,7 @@
 > | `docs/测试对照-设计文档章节.md` | 测试 ↔ `docs/agent-mvp设计.md` 章节对照（含"测不了"的边界） |
 > | `docs/agent-mvp设计.md` | 设计文档（§17 测试设计、§16 安全策略等，是所有测试的验收依据） |
 >
-> **下一步要做什么**：用户已定顺序 A → B → C，A、B 都已完成推送，C 的 **P1-5-1（`39f1fe2`）、P1-5-2（`730268d`）与 P1-5-3（`b0400fe`）也已完成**；**当前 = C 的第四步 P1-5-4（统一 401 处理并区分网络故障）**——`web/src/api/client.ts` 只有请求拦截器，要加响应拦截器按 HTTP 状态处理 401（保留 redirect），后端不可达只提示不强制退出；之后 P1-5-5（历史抽屉筛选/重跑/失败细分）与 P1-5-6（422 `loc` 映射到字段）。未完成项与各自的缺口见 `docs/项目补充优化.md` 2.2 节。
+> **下一步要做什么**：用户已定顺序 A → B → C，A、B 都已完成推送，C 的 **P1-5-1（`39f1fe2`）、P1-5-2（`730268d`）、P1-5-3（`b0400fe`）与 P1-5-4（响应拦截器统一 401，见 `docs/项目补充优化.md` 第五节）也已完成**；**当前 = C 的第五步 P1-5-5（历史抽屉使用详情接口：剩筛选交互、重跑一条历史、失败状态细分展示）**，之后 P1-5-6（422 `loc` 映射到字段）。未完成项与各自的缺口见 `docs/项目补充优化.md` 2.2 节。
 >
 > **项目根目录**：`E:\IncidentAgent`｜**关联项目**：`E:\RagKnowledgeSystem`（DevAtlas）
 >
@@ -43,7 +43,7 @@
 
 ## 2. 仓库、推送与隐私
 
-**接手事实（本版核对于 `167ca03`）**：HEAD = `167ca03`｜提交数 = 64｜工作区干净、`local == origin`｜后端基线 **381 passed**、前端 **50 passed**｜清单 **已勾 34 / 未勾 14**｜**下一步 = P1-5-4**。新会话先跑 §12.1 的三条命令复核这些数字。
+**接手事实（本版核对于 2026-09-15 的 P1-5-4 提交）**：工作区干净、`local == origin`｜后端基线 **381 passed**、前端 **97 passed（11 个 `.spec.ts`）**｜清单 **已勾 35 / 未勾 13**｜**下一步 = P1-5-5**。提交数与 HEAD 会随文档提交变动，**新会话先跑 §12.1 的三条命令复核这些数字**。
 
 ```text
 仓库地址（公开）: https://github.com/3262253821/Incident-Agent
@@ -75,20 +75,20 @@ GitHub 账号     : 3262253821
 
 | 指标 | 最初 | 现在 |
 | --- | --- | --- |
-| 提交数 | 0 | **64 个**（核对于 `167ca03`：代码提交到 `b0400fe`，其后是 `d02610d`/`167ca03` 两个文档提交；准确值以 `git rev-list --count HEAD` 为准） |
-| 测试用例 | 18 passed | 后端 **381 passed, 0 warnings**；前端 **50 passed**（P1-5-3 新增，vitest + jsdom） |
-| 测试文件 | 4 个（用户原有） | 后端 **31 个**（另有 `tests/conftest.py` 做代理变量隔离）；前端 **6 个 `.spec.ts`**（`web/tests/`） |
+| 提交数 | 0 | **随每轮往里走**（准确值以 `git rev-list --count HEAD` 为准） |
+| 测试用例 | 18 passed | 后端 **381 passed, 0 warnings**；前端 **97 passed**（P1-5-3 建框架 50 条，P1-5-4 加到 97 条，vitest + jsdom） |
+| 测试文件 | 4 个（用户原有） | 后端 **31 个**（另有 `tests/conftest.py` 做代理变量隔离）；前端 **11 个 `.spec.ts`**（`web/tests/`） |
 | ruff（全仓） | 193 个错误 | **0** |
 | 弃用/SQLAlchemy 警告 | 131 条 | **0** |
 | 数据库迁移 | 1 个 | 3 个（新增 `370ee3c8987d` 中断标记列、`c78153d58823` 降级摘要列） |
-| CI | 无 | **绿**（最新：P1-5-3 的 run `34944164842`，两个 job 全过，前端 job 已含"运行单测"一步；此前 P1-5-2 的 `34941997248`、`34942094169`） |
-| 清单完成度 | — | **已勾 34 项（含审计基线）/ 未勾 14 项** |
+| CI | 无 | **绿**（P1-5-4 的 run 见 `docs/项目补充优化.md`；前端 job 已含"运行单测"一步） |
+| 清单完成度 | — | **已勾 35 项（含审计基线）/ 未勾 13 项** |
 
 **唯一的任务源是 `docs/项目补充优化.md`**（勾选表 + 完成记录 + 执行顺序记录）。本文只做导航与背景。
 
 ---
 
-## 4. 已完成内容一览（34 项，每项都满足"实现 + 测试 + 推送"）
+## 4. 已完成内容一览（35 项，每项都满足"实现 + 测试 + 推送"）
 
 | 项目 | 一句话说明 | 提交 |
 | --- | --- | --- |
@@ -117,6 +117,7 @@ GitHub 账号     : 3262253821
 | P1-5-1 | 前端 7 个压行文件展开为常规排版（`styles.css` 59 → 1052 行，另有 6 个 Vue 组件）+ 排版守门测试；用编译产物证明零行为差异（生产构建产物与改动前逐字节相同） | `39f1fe2` |
 | P1-5-2 | 前后端类型统一：先修根因——`POST /analyze` 与 `GET /runs/{id}` 改用同一份步骤投影（此前 5 条步骤在两个接口上有 4 种形状、泄漏 `_started_at`/`ok`/`attempts` 等内部字段、且缺 `step_index`）；再按真实契约重写 `web/src/types/api.ts`，并用 OpenAPI schema + 真实载荷双向比对 17 个 TS 接口接入 CI | `730268d` |
 | P1-5-3 | 前端测试与可访问性：引入 Vitest + `@vue/test-utils` + jsdom（50 条 / 6 个文件，`npm run test` 进 CI），把此前只有 `tmp/` 手跑脚本的时间工具纳入回归；补 `role=dialog`+ESC+焦点陷阱与焦点归还、`aria-live` 播报、`role=alert`/`aria-busy`、`:focus-visible`、`prefers-reduced-motion`；顺带修掉"ESC 监听器装在 `await` 之后导致抽屉刚打开关不掉"的真实缺陷 | `b0400fe` |
+| P1-5-4 | 统一 401 处理并区分网络故障：`web/src/api/client.ts` 加响应拦截器，判据从"错误文案 `includes('401')`"改为 **HTTP 状态码 + 后端统一契约的 `error_code`**（修掉了"文案变成中文 detail 后永远不会登出"的静默失效）；`restore()` 区分"401/403 清会话"与"连不上/超时/上游 5xx 只提示、保留 Token"；跳登录页时带上 `redirect`（并用 `safeRedirect` 挡住开放重定向）；前端测试 50 → **97 条**（含真实 axios 实例与真实 store 的链路测试） | 见 `docs/项目补充优化.md` |
 
 详细完成记录（改了什么文件、怎么验证、反证结果、是否影响迁移/API/前端、简历可用事实）都在 `docs/项目补充优化.md` 对应条目下。
 
@@ -124,15 +125,15 @@ GitHub 账号     : 3262253821
 
 ## 5. 还差什么
 
-### 5.1 清单内未完成（14 项）
+### 5.1 清单内未完成（13 项）
 
 | 分组 | 条目 | 现状与说明 |
 | --- | --- | --- |
 | 测试与工程化 | ~~P1-4-1 补齐设计文档要求的测试~~ / ~~P1-4-5 增加 CI~~ | **都已完成**（见第 4 节）：P1-4-1 补 45 条测试 + 章节记账；P1-4-5 CI 变绿并已读真实运行结果。测试与工程化这一组已清空 |
-| 前端质量（3 项） | ~~P1-5-1 拆分多语句单行代码~~ | **已完成**（`39f1fe2`）：核对后发现实际有 **7 个**文件压行（审计只点了 2 个），已全部展开并加排版守门测试 |
+| 前端质量（2 项） | ~~P1-5-1 拆分多语句单行代码~~ | **已完成**（`39f1fe2`）：核对后发现实际有 **7 个**文件压行（审计只点了 2 个），已全部展开并加排版守门测试 |
 | | ~~P1-5-2 前后端类型统一~~ | **已完成**（`730268d`）：核对后发现问题比清单写的更严重——两个接口的步骤形状不同（analyze 5 条步骤 4 种形状、泄漏内部字段、缺 `step_index`），已统一为一份投影；17 个手写 TS 类型进入 CI 双向比对 |
-| | ~~P1-5-3 前端测试与可访问性~~ | **已完成**（`b0400fe`）：核对后确认审计原文的 5 处"0 处"全部属实；已引入 Vitest（50 条进 CI）并补 `role=dialog`/ESC/焦点管理、`aria-live`、`:focus-visible`、`prefers-reduced-motion`。清单里"前端质量"剩 3 项 |
-| | P1-5-4 统一 401 处理 | **下一步**。无响应拦截器，仍靠"错误文案里包含 401"判断退出；网络抖动会误清 Token |
+| | ~~P1-5-3 前端测试与可访问性~~ | **已完成**（`b0400fe`）：核对后确认审计原文的 5 处"0 处"全部属实；已引入 Vitest（50 条进 CI）并补 `role=dialog`/ESC/焦点管理、`aria-live`、`:focus-visible`、`prefers-reduced-motion` |
+| | ~~P1-5-4 统一 401 处理~~ | **已完成**（2026-09-15，提交见 `docs/项目补充优化.md`）：判据由"错误文案 `includes('401')`"改为 HTTP 状态码 + `error_code`（原判据在真实响应上永不命中），后端不可达/超时/上游 5xx 只提示不登出，跳登录页带 `redirect`。前端测试 50 → 97 条 |
 | | P1-5-5 历史抽屉使用详情接口 | **已被 P1-3-1 / P1-3-3 部分完成**（点开拉详情、"加载更多"已通）；剩下筛选交互、重跑、失败状态细分展示 |
 | | P1-5-6 前置校验与字段级提示 | **P1-6-1 已完成"知识库为空在提交前拦下"这一半**；剩下 422 数组错误按 `loc` 映射到字段、不同失败状态的细分展示 |
 | 产品增强（7 项） | P2-1 SSE 流式分析 / P2-2 部分成功继续报告 / P2-3 固定评测集与回归基线 / P2-4 Token 与成本观测 / P2-5 真实服务状态 provider / P2-6 前端 Playwright E2E / P2-7 Docker 部署复现 | 都未开始做。注意 P2-4 里"耗时"部分已由 P1-3-2 完成，剩 token usage 与成本 |
@@ -143,23 +144,23 @@ GitHub 账号     : 3262253821
 1. **~~知识库下拉选择~~ → 已完成，编号 P1-6-1（见第 4 节与 `docs/项目补充优化.md` 第 3.3 节）。** 前端不再写死 `knowledgeBaseId = ref(3)`：登录后 `GET /api/v1/knowledge-bases` 自动加载可选知识库并默认选中第一项（`devatlas-demo` 只有 ID **4** 那一个库，实测返回 `[{"id":4,...}]`）。
 2. **真实端到端从未跑通**：已做过的活体验证覆盖真实 MySQL、真实 DevAtlas 鉴权、真实 HTTP、真实过期 JWT、真实 MySQL 删除（savepoint 回滚），但**分析与检索本身是打桩的**——真实 DeepSeek 模型返回 + 真实 `/search` 检索这条链路一次都没跑过。P1-5-2 又确认了一次这条边界：`POST /analyze` 的**运行时**步骤载荷是用真实服务函数 + 真实落库往返验证的，**没有**跑真实 HTTP 的 analyze（要点它就得先有真实模型返回）。
 3. **~~GitHub Actions 结果未确认~~ → 已解决（2026-09-15，P1-4-5）**：run `34930276951` 两个 job 全绿。之前"API 一直 403"的真正原因是查询走了开发机代理（Clash 共享出口 IP，匿名配额用尽）；用 `httpx.Client(trust_env=False)` 直连 `api.github.com` 就能读 run/job/step。
-4. **~~前端零自动化测试~~ → 已解决（2026-09-15，P1-5-3）**：`web/tests/` 下 50 条 vitest 用例（6 个文件）覆盖 store、模态抽屉的 ESC/焦点管理、播报、表单错误语义，并用 postcss 解析真实 `styles.css` 守住焦点环与减动效果；`npm run test` 已进 CI 前端 job。**仍然欠着的**是**浏览器级**验证——jsdom 不评估 `:focus-visible` 的匹配语义，也不等于屏幕阅读器实际播报；真实点击与真实渲染引擎属 **P2-6 Playwright**。
+4. **~~前端零自动化测试~~ → 已解决（2026-09-15，P1-5-3 建框架、P1-5-4 扩充）**：`web/tests/` 下 **97 条** vitest 用例（**11 个文件**）覆盖 store（含 `restore()` 的五种分支）、模态抽屉的 ESC/焦点管理、播报、表单错误语义、HTTP 客户端与响应拦截器、路由守卫与 `redirect` 过滤、入口装配，并用 postcss 解析真实 `styles.css` 守住焦点环与减动效果；`npm run test` 已进 CI 前端 job。**仍然欠着的**是**浏览器级**验证——jsdom 不评估 `:focus-visible` 的匹配语义，也不等于屏幕阅读器实际播报，真实导航（地址栏真的变成 `/login?redirect=…`）也没跑；真实点击与真实渲染引擎属 **P2-6 Playwright**。
 5. **两笔已知未修的小债**：① `report`/`degraded_summary` 是 JSON 列，"没有报告"可能落成 SQL `NULL` 或 JSON 字面量 `null`（真实 MySQL 8.0.41 上实测 `report IS NULL` 为 0 而 `JSON_TYPE(report)` 为 `'NULL'`），将来用 SQL 过滤"有报告"会踩；② 保留策略默认 `INCIDENT_RUN_RETENTION_DAYS=0`（关闭），**从未在真实默认配置下开启运行过**，只在测试与一次"savepoint 内执行后回滚"的真实 MySQL 验证里跑过。
 
 ### 5.3 下一步顺序（用户已定：A → B → C）
 
 - **A（已完成）**："知识库下拉选择" → 编号 **P1-6-1**，后端代理端点 + 前端登录后自动加载的下拉，已实现/测试/活体验证/反证/推送。
 - **B（已完成）**：**P1-4-1**（补 45 条测试 + 章节记账）与 **P1-4-5**（CI 变绿：run `34930276951` 两个 job 全绿）。
-- **C（进行中）**：**P1-5-1 已完成**（`39f1fe2`：7 个压行文件展开 + 排版守门测试）、**P1-5-2 已完成**（`730268d`：步骤契约统一 + CI 类型比对）、**P1-5-3 已完成**（`b0400fe`：Vitest 50 条进 CI + 键盘可达/焦点管理/播报/减动效果）；**下一步 P1-5-4**（统一 401 处理并区分网络故障：加响应拦截器、后端不可达只提示不退出），之后 P1-5-5 与 P1-5-6，一次收掉历史抽屉交互与字段级提示。
+- **C（进行中）**：**P1-5-1 已完成**（`39f1fe2`：7 个压行文件展开 + 排版守门测试）、**P1-5-2 已完成**（`730268d`：步骤契约统一 + CI 类型比对）、**P1-5-3 已完成**（`b0400fe`：Vitest 50 条进 CI + 键盘可达/焦点管理/播报/减动效果）、**P1-5-4 已完成**（统一 401 处理并区分网络故障：响应拦截器按状态码清会话 + `redirect` 回跳，后端不可达只提示不退出；前端测试 97 条）；**下一步 P1-5-5**（历史抽屉的筛选交互、重跑、失败状态细分展示），之后 P1-5-6（422 `loc` 映射到字段）。
 
 用户明确指定按这个顺序推进；**仍然遵守"一次一项、做完等指示"**，不要连做两项。
 
-**P1-5-4 开工前要知道的事**：
+**P1-5-5 开工前要知道的事**（已回代码核对，不是凭记忆）：
 
-- 现状：`web/src/api/client.ts` 只有请求拦截器（贴 Token），**没有响应拦截器**；`IncidentWorkspaceView.submit()` 里靠 `apiErrorMessage(failure).includes('401')` 判断退出——这是把"错误文案"当控制流，后端改文案就会静默失效。
-- `web/src/stores/auth.ts::restore()` 目前**任何异常都清 Token**，包括网络不可达；P1-5-4 要把它改成"401/403 才退出，连接失败只提示"。
-- **现在有测试可以承载这条改动了**（P1-5-3 的产物）：`web/tests/stores.spec.ts` 已经固定了 `restore()` 的三种分支、`web/tests/forms.spec.ts` 固定了错误语义；加响应拦截器时**先改这两处的期望值再改实现**，否则会看起来"测试突然变红"。
-- 401 的处理必须保留跳转登录页的行为（`router.beforeEach` 看的是 `localStorage` 里的 token），并沿用后端统一错误契约的 `error_code`（`UNAUTHORIZED`）而不是文案。
+- 现状：`listRuns` 摘要 + 点开拉详情 + "加载更多" + 相对时间与耗时**已经可用**（P1-3-1/P1-3-3）；仍缺**筛选交互**（状态/时间区间）、**用同一参数重跑**、**失败状态细分展示**（`web/src/constants/status.ts` 已区分 6 种状态并单独处理 `INTERRUPTED`，所以细分展示主要是把它用在抽屉里）。
+- 查询参数已经就绪：`web/src/api/runs.ts` 的 `listRuns(params: RunHistoryQuery)` 支持 `status[]`/`started_after`/`started_before`/`cursor`/`limit`，并且用 `paramsSerializer: { indexes: null }` 处理了"数组参数必须写成重复键"（FastAPI `Query(list[str])` 只认重复键）；`stores/incident.ts::loadHistory(params)` 已经把它透传下去——筛选用不着改后端。
+- **"重跑"有一个真实约束**：`RunResponse`/`RunSummary`（`app/incident_agent/schemas/incident.py`）里**没有 `content`（原始日志）也没有 `top_k`**——设计文档 §12.1 本来就只存摘要。所以"用相同参数重跑"只能做到"带上 `title`/`knowledge_base_id` 回到表单"，日志正文得让用户重新粘贴；**想要真正的"一键重跑"就必须先加后端字段/接口**（那属于 API 契约变更，按项目约定要先在 `docs/项目补充优化.md` 写明再做）。
+- 历史列表**故意没有 `total`**（用 `next_cursor` 判断是否还有下一页），所以"总数/页码"式的交互做不了，也不需要。
 
 ---
 
@@ -169,7 +170,7 @@ GitHub 账号     : 3262253821
 1. 读 docs/项目交接文档-DeepSeek.md（本文）和 docs/项目补充优化.md，
    按用户指定的 A → B → C 顺序推进：A（P1-6-1）、B（P1-4-1、P1-4-5）与
    C 的前三步（**P1-5-1 `39f1fe2`、P1-5-2 `730268d`、P1-5-3 `b0400fe`**）都已完成，
-   下一步是 **P1-5-4（统一 401 处理并区分网络故障）**
+   下一步是 **P1-5-5（历史抽屉的筛选交互、重跑、失败状态细分展示）**
 
 2. 读该条目下面列出的「涉及文件」，先读代码再动手，不要凭记忆假设接口
    —— 涉及 DevAtlas 接口时必须读 E:\RagKnowledgeSystem\backend 的真实代码
@@ -180,7 +181,7 @@ GitHub 账号     : 3262253821
      py -m compileall -q app migrations tests
      py -m alembic check              # 只在动了 models/ 时才需要（需本机 MySQL）
      cd web; npm run build            # 只在动了前端时才需要
-     cd web; npm run test             # 前端单测（50 条；动了 web/ 就必须跑）
+     cd web; npm run test             # 前端单测（97 条 / 11 个文件；动了 web/ 就必须跑）
 
    新增测试时同时更新 docs/测试对照-设计文档章节.md，并在模块 docstring 里
    写明「设计文档章节：§x.y」（P1-4-1 建立的记账约定；前端测试见该文档第 6 节）。
@@ -238,7 +239,7 @@ cd E:\IncidentAgent; $env:PYTHONPATH="E:\IncidentAgent"; py tmp\run_agent_clean.
 cd E:\IncidentAgent\web; npm run dev -- --host 127.0.0.1 --port 5174
 
 # 前端验证与测试（不需要启动任何服务；P1-5-3 起 npm run test 是必跑项）
-cd E:\IncidentAgent\web; npm run test      # vitest run，jsdom，50 条
+cd E:\IncidentAgent\web; npm run test      # vitest run，jsdom，97 条 / 11 个文件
 cd E:\IncidentAgent\web; npm run build     # vue-tsc -b && vite build
 ```
 
@@ -252,7 +253,7 @@ NO_PROXY=localhost,127.0.0.1,::1,[::1]
 
 `[::1]` 这个写法会让 `httpx.Client` 在**构造阶段**就抛 `InvalidURL: Invalid port: ':1]'`（httpx 把它拼成 `all://*[::1]` 模式）。后果与处理：
 
-- **pytest**：会让 23 条测试在任何断言之前失败 → 已由 `tests/conftest.py` 在会话开始时清掉代理变量修好，现在应当是 **381 passed**（前端 50 条用 jsdom，不碰网络）；
+- **pytest**：会让 23 条测试在任何断言之前失败 → 已由 `tests/conftest.py` 在会话开始时清掉代理变量修好，现在应当是 **381 passed**（前端 97 条用 jsdom，不碰网络）；
 - **真实服务**：所有 DevAtlas 调用（登录、知识库授权、检索）都会 500（已复现 `exception_type: InvalidURL`）→ 用 `tmp/run_agent_clean.py` 启动（它在 Python 里 pop 掉代理变量再 `uvicorn.run`）；
 - **注意**：在这个 shell 里 `$env:NO_PROXY=...` 对子进程**无效**（每层子进程都会被重新注入），必须由 Python 进程自己 pop。
 
@@ -261,12 +262,12 @@ NO_PROXY=localhost,127.0.0.1,::1,[::1]
 - `requirements-lock.txt`（62 个精确版本）+ `requirements-dev.txt`（pytest、ruff）是复现环境的正确入口；`requirements.txt` 是**经实测校准的下限**（`openai>=3.0`、`langchain-core>=1.0`、`langchain-openai>=1.0`、`langgraph>=1.0`、`httpx>=0.28`），旧下限（0.3/0.27）会把干净环境装成另一个大版本。
 - 本机关键的实测版本：openai 3.13.0、langchain-core 1.6.3、langchain-openai 1.6.2、langgraph 1.2.11、fastapi 0.141.1、SQLAlchemy 2.0.52、pydantic 2.13.5、alembic 1.20.0、httpx 0.28.1、pytest 9.1.1、ruff 0.16.5。
 - `.env`（不提交）需要：`INCIDENT_DB_*`、`DEVATLAS_BASE_URL`、`DEEPSEEK_API_KEY`。可选变量与默认值见 `.env.example`（含 `INCIDENT_RUN_RETENTION_DAYS=0`）。
-- **测试不需要 MySQL**：后端 381 条测试全部使用 SQLite 内存库，可离线运行（前端 50 条用 jsdom，连数据库都不需要）；只有 `alembic check` 需要本机 MySQL。**但两件事要注意**：① 缺少 `INCIDENT_DATABASE_URL` 时连 `import app.main` 都会抛 `RuntimeError`（配置强校验），所以干净环境（含 CI）必须提供一个数据库 URL（CI 用 `sqlite+pysqlite:///:memory:`）；② 每个 API 测试都要自己覆盖 `get_db`，否则会走开发机 `.env` 指向的真实 MySQL（见第 9 节第 10/11 条）。
+- **测试不需要 MySQL**：后端 381 条测试全部使用 SQLite 内存库，可离线运行（前端 97 条用 jsdom，连数据库都不需要）；只有 `alembic check` 需要本机 MySQL。**但两件事要注意**：① 缺少 `INCIDENT_DATABASE_URL` 时连 `import app.main` 都会抛 `RuntimeError`（配置强校验），所以干净环境（含 CI）必须提供一个数据库 URL（CI 用 `sqlite+pysqlite:///:memory:`）；② 每个 API 测试都要自己覆盖 `get_db`，否则会走开发机 `.env` 指向的真实 MySQL（见第 9 节第 10/11 条）。
 
 ### 7.4 前端测试与验证方式（P1-5-3 起有正式框架）
 
 ```powershell
-cd E:\IncidentAgent\web; npm run test      # vitest run，jsdom 环境，50 条 / 6 个文件
+cd E:\IncidentAgent\web; npm run test      # vitest run，jsdom 环境，97 条 / 11 个文件
 cd E:\IncidentAgent\web; npm run build     # vue-tsc -b && vite build
 ```
 
@@ -343,7 +344,7 @@ incident_agent.agent_runs: owner 1 有 4 条，owner 5 有 1 条（合计 5 条�
     ```
     另外：`.NET` 静态调用（`[System.IO.File]::ReadAllBytes`）会把**进程的当前目录重置成 PowerShell 的启动目录**，之后所有相对路径都会指错——脚本里一律传绝对路径。用 `Get-Content` 看 UTF-8 文件也会花屏（见第 9 条），要读内容用文件工具。
 19. **反证的备份要用绝对路径、且每批实验前重新备份**（P1-5-3 踩的坑）：第一次失败的实验跑给 `tmp/p153_backup/` 留下了一份**早于最新修改**的备份，第二批实验用 `-replace` 拼出的相对路径既非绝对、文件名也不对，于是"恢复"实际上什么都没做（`Copy-Item` 报 `Cannot find path`，`$ErrorActionPreference='Stop'` 也没拦住非终止错误）。后果是 E1 的改动（把 `addEventListener` 换成注释）留在了工作区，差点被当成"已恢复"。**核对方式**：每个实验恢复后立刻比 `Get-FileHash`，并保留"恢复后逐字节一致"的输出。
-20. **P1-5-4 相关（下一步会踩的地方）**：① `apiErrorMessage()` 里 `error.code === 'ECONNABORTED'` 判的是 axios 的超时码，但**同一个错误上 `error.response` 才是 HTTP 状态**——想按状态码分流必须看 `error.response?.status` 与后端统一契约里的 `error_code`（`UNAUTHORIZED`），不要继续用文案 `includes('401')`（`IncidentWorkspaceView.submit()` 现在就是这么干的，后端改文案就会静默失效）；② `auth.restore()` 目前 **catch 一切就 `signOut()`**，加响应拦截器时小心别让"后端没起来"也清掉用户 Token；③ `web/tests/stores.spec.ts` 已经把 `restore()` 的三种分支固定下来了（有令牌且成功 / 令牌失效 / 没有令牌），**先改这组期望值再改实现**，否则看起来像"测试突然变红"；④ 401 之后仍要跳登录页——`router.beforeEach` 只检查 `localStorage` 里有没有 token。
+20. **P1-5-4 相关（已完成，这里保留"下一项会踩的地方"与两个新坑）**：① `apiErrorMessage()` 里 `error.code === 'ECONNABORTED'` 判的是 axios 的超时码，但**同一个错误上 `error.response` 才是 HTTP 状态**——想按状态码分流必须看 `error.response?.status` 与后端统一契约里的 `error_code`（`UNAUTHORIZED`）。P1-5-4 之前 `IncidentWorkspaceView.submit()` 用的是 `apiErrorMessage(failure).includes('401')`，**这条判断在真实响应上永远不会命中**（`apiErrorMessage` 优先返回中文 `detail`），也就是"令牌过期后前端根本不会退出登录态"；现在判据只有一处：响应拦截器里的 `isAuthFailure()`（状态码 + `error_code` 交叉核对）。② `auth.restore()` 曾经 **catch 一切就 `signOut()`**；现在是"401/403 清会话，连不上/超时/上游 5xx 只提示并保留 Token"。③ 401 之后仍会跳登录页——`router.beforeEach` 只检查 `localStorage` 里有没有 token，所以**清 Token 的副作用就是"下一次导航会被拦到登录页"**；跳转由 `src/main.ts` 注册的处理函数做（`client.ts` 有意不 import router/store，避免模块成环）。④ **新坑：jsdom/vitest 里给 axios 换自定义 `adapter` 时，4xx 会被当成成功响应**——自定义 adapter 的返回值不再经过 axios 内部的 `settle()`（那是 adapter 自己的职责），必须自己抛 `AxiosError(msg, code, config, request, response)`。第一版 `apiClient.spec.ts` 就是因此全绿假象。⑤ **新坑：反证脚本的 `Get-FileHash` 只能证明"恢复后 == 备份"，证明不了"备份本身就是坏文件"**——P1-5-4 的批量脚本第一版在备份**之前**就先改坏了一次，于是"备份"里存的是坏文件，后续实验叠加上去导致 `client.ts` 出现两行 `return false`，而脚本的哈希校验全过。教训：改坏前**先全部备份**、每个实验只做互不重叠的替换，恢复后再**读一次实现**核对（这里是 `git diff` + 全量测试）。
 
 ---
 
@@ -351,7 +352,7 @@ incident_agent.agent_runs: owner 1 有 4 条，owner 5 有 1 条（合计 5 条�
 
 1. **真实模型返回与真实检索未跑通**（见 5.2 第 2 条）：已验证的是真实 DB、真实鉴权、真实 HTTP、真实过期令牌；**分析链路仍靠 FakeModel/MockRagGateway**。
 2. **~~CI 在 GitHub 上的运行结果未确认~~ → 已确认（2026-09-15）**：run `34930276951` 两个 job 全绿，P1-4-5 已勾选；此后每一项推送后都读了真实结果（P1-5-1：`34932240446`；P1-5-2：`34941997248`、`34942094169`；**P1-5-3：`34944164842`**），**都全绿**。顺带发现并修掉了三类"只在开发机上通过"的缺陷（无 `.env` 时收集阶段失败、两条用例依赖真实 MySQL、workflow 里的 YAML 引号），其中第一条正是 CI 一直红的原因。P1-5-3 那次尤其值得记：**"运行单测"这一步一次通过**，说明这 50 条用例在干净环境（Ubuntu + Node 22 + `npm ci`，没有本机 `node_modules`）里也装得上、跑得动——如果只在本地跑过，`package-lock.json` 少了平台相关包这类问题要等到别人拉下来才暴露。
-3. **前端仍没有浏览器级自动化测试**（P1-5-3 补上了组件级）：现在有 `vue-tsc` + `vite build` + **50 条 vitest/jsdom 用例**（`npm run test` 进 CI），加上 P1-5-1/P1-5-2 留下的两个 **Python 侧**守门测试（排版、类型契约）。**但 jsdom 不是浏览器**：`:focus-visible` 的匹配语义、真实点击与真实渲染、屏幕阅读器实际播报都没有自动化手段，属 P2-6 Playwright。
+3. **前端仍没有浏览器级自动化测试**（P1-5-3 补了组件级、P1-5-4 补了 HTTP/路由/入口级）：现在有 `vue-tsc` + `vite build` + **97 条 vitest/jsdom 用例**（`npm run test` 进 CI），加上 P1-5-1/P1-5-2 留下的两个 **Python 侧**守门测试（排版、类型契约）。**但 jsdom 不是浏览器**：`:focus-visible` 的匹配语义、真实点击与真实渲染、屏幕阅读器实际播报、P1-5-4 的"地址栏真的变成 `/login?redirect=…`"都没有自动化手段，属 P2-6 Playwright。
 4. **保留策略从未在真实默认配置下开启运行过**（默认关闭）。
 5. **已知功能边界**（有意设计，不是漏项）：`138-0013-8000` 这类带分隔符的手机号不会被脱敏命中；`AgentStep.arguments_summary` 等的原始文本不入库（只存长度/计数）；历史列表不返回 `total`（用游标判断是否还有下一页）。
 6. **测试侧的已知边界**（P1-4-1 记账时确认，详见 `docs/测试对照-设计文档章节.md` 第 5 节）：① 设计文档 §17.2 案例 7 写的是"服务状态工具超时"，但 `get_service_status` 是进程内 mock、没有 I/O，所以**不可复现**，现用检索超时（`RAG_TIMEOUT`）覆盖其意图，真实 provider 属 P2-5；② `analyze_log` 的 `MAX_MATCHED_TEXT = 120` 在现有 4 个正则下**不可达**（最长命中 11 字符），属防御性代码、无法构造用例。
@@ -394,23 +395,27 @@ P1-5-3 新增可写：
 
 - 为前端补上自动化测试与无障碍支持：引入 Vitest + `@vue/test-utils` + jsdom 并接入 CI（50 条用例覆盖 store 状态机、模态抽屉的 ESC/焦点陷阱/焦点归还、表单错误播报与 `aria-live`），把此前只靠手跑脚本验证的时间工具纳入回归；用 postcss 解析真实样式表守住 `:focus-visible` 与 `prefers-reduced-motion`，并用 `@vue/server-renderer` 的 SSR 产物验证无障碍属性确实出现在渲染结果里；过程中发现并修掉一个真实缺陷——ESC 监听器注册在 `await` 之后，导致对话框刚打开时关不掉。
 
+P1-5-4 新增可写：
+
+- 把前端的会话失效处理从"靠错误文案 `includes('401')` 判断"改为"按 HTTP 状态码 + 统一错误契约的 `error_code` 统一拦截"：先量出原判据在真实响应上**永远不会命中**（`apiErrorMessage()` 优先返回后端中文 `detail`，所以令牌过期后前端根本不会退出登录态），再让响应拦截器成为唯一判据，并区分 `401/403`（清会话、带 `redirect` 跳登录页回跳）与"后端不可达 / 请求超时 / 上游 5xx"（只提示、保留令牌，网络抖动不踢人）；`redirect` 是地址栏输入，用白名单过滤挡住 `//evil.example` 这类协议相对地址（开放重定向）。测试侧用**真实 axios 实例 + 真实 auth store** 跑通同一条链路（而不是 mock 掉 axios），因此当场发现"自定义 adapter 的响应不再经过 axios 的 `settle()`，4xx 会被当成功响应"这个只在测试替身里存在的陷阱；最后用 5 个反证实验逐个证明测试真的会红，其中"删掉状态码判断"那个反证当场抓出了自己测试里的假绿（补了一条"状态码优先"的用例才抓到），并用真实服务验证了"DevAtlas 停机 → 503 + DEPENDENCY_UNAVAILABLE"与"真实过期令牌 → 401 + UNAUTHORIZED"确实是两类。
+
 **仍不能写成"已实现"**：SSE 流式分析、真实监控 provider、Redis、MCP、多 Agent、自动修复、高并发、真实准确率、生产上线规模。
 
 ---
 
 ## 12. 给新会话的第一句话建议
 
-> 读 `docs/项目交接文档-DeepSeek.md` 和 `docs/项目补充优化.md`，用户已定顺序 **A → B → C**：A（P1-6-1 知识库下拉选择）、B（P1-4-1 补测试、P1-4-5 CI 变绿并确认）与 **C 的前三步 P1-5-1（7 个前端文件压行拆分，`39f1fe2`）、P1-5-2（前后端类型统一 + 步骤契约只有一份，`730268d`）、P1-5-3（Vitest 50 条进 CI + 键盘可达，`b0400fe`）** 都已完成推送（CI run `34944164842` 两个 job 全绿）。下一步是 **C 的第四步：P1-5-4 统一 401 处理并区分网络故障**（响应拦截器按 HTTP 状态处理 401、保留 redirect；后端不可达只提示、不强制退出；注意 `auth.restore()` 现在任何异常都清 Token，而 `web/tests/stores.spec.ts` 已经固定了它的三种分支——先改期望值再改实现），然后 P1-5-5、P1-5-6。按约定：一次一项、实现+测试+推送齐了才打勾、不跳项、不用 `git add .`，每项都要做反证并写完成记录。
+> 读 `docs/项目交接文档-DeepSeek.md` 和 `docs/项目补充优化.md`，用户已定顺序 **A → B → C**：A（P1-6-1 知识库下拉选择）、B（P1-4-1 补测试、P1-4-5 CI 变绿并确认）与 **C 的前四步 P1-5-1（7 个前端文件压行拆分，`39f1fe2`）、P1-5-2（前后端类型统一 + 步骤契约只有一份，`730268d`）、P1-5-3（Vitest 50 条进 CI + 键盘可达，`b0400fe`）、P1-5-4（响应拦截器统一 401 + 区分网络故障，前端测试 97 条）** 都已完成推送（P1-5-4 的 CI run 见 `docs/项目补充优化.md` 的完成记录）。下一步是 **C 的第五步：P1-5-5 历史抽屉使用详情接口**（剩筛选交互、用同一参数重跑、失败状态细分展示；注意列表接口本来就是摘要 + 游标、"重跑"缺 `content`/`top_k` 字段的约束见交接文档 §5.3），然后 P1-5-6（422 `loc` 映射到字段）。按约定：一次一项、实现+测试+推送齐了才打勾、不跳项、不用 `git add .`，每项都要做反证并写完成记录（反证脚本照 `tmp/p154_counterexamples.ps1` 的结构：先全部备份、再逐个改坏、恢复后比 `Get-FileHash` **并读一次实现**）。
 
 ### 12.1 新会话开场建议跑的三条命令（30 秒内确认接手状态）
 
 ```powershell
 cd E:\IncidentAgent; git log --oneline -5; git status --short   # 工作区应当干净
 cd E:\IncidentAgent; py -m pytest tests -q                      # 期望 381 passed
-cd E:\IncidentAgent\web; npm run test                            # 期望 6 files / 50 passed
+cd E:\IncidentAgent\web; npm run test                            # 期望 11 files / 97 passed
 ```
 
-三条都对得上，就说明本文档描述的状态与代码一致，可以直接从 §5.3 的 P1-5-4 开始；对不上就先按 §9 的坑逐条排查，不要直接动手改代码。
+三条都对得上，就说明本文档描述的状态与代码一致，可以直接从 §5.3 的 P1-5-5 开始；对不上就先按 §9 的坑逐条排查，不要直接动手改代码。
 
 ### 12.2 `tmp/` 里的东西怎么用（新会话可直接改，都不提交）
 
@@ -419,7 +424,9 @@ cd E:\IncidentAgent\web; npm run test                            # 期望 6 file
 | 类别 | 例子 | 说明 |
 | --- | --- | --- |
 | 活体验证探针 | `run_agent_clean.py`、`live_*.py`、`gh_runs.py` | 见 §8 的表；这是本项目最有价值的验证手段 |
-| P1-5-3 的反证脚本 | `p153_break.ps1`（按 `-Index` 跑单个实验）、`p153_counterexamples.ps1`（批量）、`p153_backup2/`（那一刻的备份） | **下一项做反证时照这个结构写一份新的**：逐文件备份 → 改坏 → 跑测试 → 恢复 → 比 `Get-FileHash` |
+| P1-5-4 的活体验证探针 | `p154_live_401_contract.py`（真实 401/503 契约）、`p154_live_auth_flow.py`（真实登录/过期令牌/上游不可达）、`p154_run_devatlas.py`（清代理变量后启动 DevAtlas） | 三个都是"起真实服务再读真实响应"，`tmp/` 不提交；下一个动鉴权/错误契约的项直接改这三个 |
+| P1-5-3 的反证脚本 | `p153_break.ps1`（按 `-Index` 跑单个实验）、`p153_counterexamples.ps1`（批量）、`p153_backup2/`（那一刻的备份） | 结构：逐文件备份 → 改坏 → 跑测试 → 恢复 → 比 `Get-FileHash` |
+| P1-5-4 的反证脚本 | `p154_counterexamples.ps1`（5 个实验 + 恢复后哈希核对）、`p154_backup/` | **比 P1-5-3 那份多两条纪律**：① 改坏**之前**先把所有文件备份完；② 恢复后除哈希外还要读一次实现（`git diff`）——哈希只能证明"恢复后 == 备份"，证明不了"备份没坏"（P1-5-4 在这里踩过） |
 | P1-5-3 的 SSR 探针 | `p153_probe/p153-live.spec.ts`、`p153_probe_output.txt` | 真实渲染产物里核对无障碍属性的证据 |
 | 一次性脚本与草稿 | `annotate_*.py`、`trim_checklist.py`、`probe_*.py`、`msg_*.txt`、`commit_msg_*.txt` | 都可以随时删 |
 | 数据安全网 | `backup_agent_runs_before_p042.sql`、`backup_before_degraded_summary.sql` | 改真实 MySQL 数据前留的备份 |
