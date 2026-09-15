@@ -2,9 +2,9 @@
 
 > **用途**：上下文压缩、会话切换或换模型后的**第一恢复入口**。新会话读完本文即可接手，不需要回溯历史对话。
 >
-> **最后更新**：2026-09-15（P1-5-2 前后端类型统一 + 步骤契约只有一份；此前 P1-5-1、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成）
+> **最后更新**：2026-09-15（P1-5-2 前后端类型统一 + 步骤契约只有一份；此前 P1-5-1、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成）。**本次为新会话做了一次导航一致性核对**：未完成项 15 项、测试基线 380 passed、下一步 P1-5-3。
 >
-> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`730268d`**（P1-5-2；更早的代码收尾是 P1-5-1 的 `39f1fe2`），其后是文档提交。每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
+> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`730268d`**（P1-5-2；更早的代码收尾是 P1-5-1 的 `39f1fe2`），其后是文档提交（勾选记录 `dad31a9`、CI 记录 `6367682`）。**交接时的 HEAD = `6367682`，工作区干净**；每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
 >
 > **文档地图（新会话先看这张表）**：
 >
@@ -73,20 +73,20 @@ GitHub 账号     : 3262253821
 
 | 指标 | 最初 | 现在 |
 | --- | --- | --- |
-| 提交数 | 0 | **57 个提交**（代码提交到 `730268d`，其后为文档提交） |
+| 提交数 | 0 | **59 个提交**（代码提交到 `730268d`，其后为文档提交；准确值以 `git rev-list --count HEAD` 为准） |
 | 测试用例 | 18 passed | **380 passed, 0 warnings** |
 | 测试文件 | 4 个（用户原有） | **31 个**（另有 `tests/conftest.py` 做代理变量隔离） |
 | ruff（全仓） | 193 个错误 | **0** |
 | 弃用/SQLAlchemy 警告 | 131 条 | **0** |
 | 数据库迁移 | 1 个 | 3 个（新增 `370ee3c8987d` 中断标记列、`c78153d58823` 降级摘要列） |
-| CI | 无 | **绿**（run `34930276951`，两个 job 全过） |
+| CI | 无 | **绿**（最新：P1-5-2 的 run `34941997248`、`34942094169` 两个 job 全过；首次确认是 P1-4-5 的 `34930276951`） |
 | 清单完成度 | — | **已勾 33 项（含审计基线）/ 未勾 15 项** |
 
 **唯一的任务源是 `docs/项目补充优化.md`**（勾选表 + 完成记录 + 执行顺序记录）。本文只做导航与背景。
 
 ---
 
-## 4. 已完成内容一览（31 项，每项都满足"实现 + 测试 + 推送"）
+## 4. 已完成内容一览（33 项，每项都满足"实现 + 测试 + 推送"）
 
 | 项目 | 一句话说明 | 提交 |
 | --- | --- | --- |
@@ -121,7 +121,7 @@ GitHub 账号     : 3262253821
 
 ## 5. 还差什么
 
-### 5.1 清单内未完成（17 项）
+### 5.1 清单内未完成（15 项）
 
 | 分组 | 条目 | 现状与说明 |
 | --- | --- | --- |
@@ -138,9 +138,9 @@ GitHub 账号     : 3262253821
 ### 5.2 清单外但仍然欠着的（按"影响用户"排序）
 
 1. **~~知识库下拉选择~~ → 已完成，编号 P1-6-1（见第 4 节与 `docs/项目补充优化.md` 第 3.3 节）。** 前端不再写死 `knowledgeBaseId = ref(3)`：登录后 `GET /api/v1/knowledge-bases` 自动加载可选知识库并默认选中第一项（`devatlas-demo` 只有 ID **4** 那一个库，实测返回 `[{"id":4,...}]`）。
-2. **真实端到端从未跑通**：已做过的活体验证覆盖真实 MySQL、真实 DevAtlas 鉴权、真实 HTTP、真实过期 JWT、真实 MySQL 删除（savepoint 回滚），但**分析与检索本身是打桩的**——真实 DeepSeek 模型返回 + 真实 `/search` 检索这条链路一次都没跑过。
+2. **真实端到端从未跑通**：已做过的活体验证覆盖真实 MySQL、真实 DevAtlas 鉴权、真实 HTTP、真实过期 JWT、真实 MySQL 删除（savepoint 回滚），但**分析与检索本身是打桩的**——真实 DeepSeek 模型返回 + 真实 `/search` 检索这条链路一次都没跑过。P1-5-2 又确认了一次这条边界：`POST /analyze` 的**运行时**步骤载荷是用真实服务函数 + 真实落库往返验证的，**没有**跑真实 HTTP 的 analyze（要点它就得先有真实模型返回）。
 3. **~~GitHub Actions 结果未确认~~ → 已解决（2026-09-15，P1-4-5）**：run `34930276951` 两个 job 全绿。之前"API 一直 403"的真正原因是查询走了开发机代理（Clash 共享出口 IP，匿名配额用尽）；用 `httpx.Client(trust_env=False)` 直连 `api.github.com` 就能读 run/job/step。
-4. **前端零自动化测试**：目前只有 `vue-tsc` + `vite build`，外加用 Node 直跑时间工具的手工验证（见 7.4）；界面实际长什么样没有自动手段。
+4. **前端零自动化测试（P1-5-3 开始解决）**：目前只有 `vue-tsc` + `vite build`，外加两次手工/进程内验证（Node 直跑时间工具、真实服务拉 `/openapi.json`）与两个 Python 侧的守门测试（排版 `tests/test_frontend_formatting.py`、类型契约 `tests/test_api_type_contract.py`）；**界面实际长什么样仍没有自动手段**。
 5. **两笔已知未修的小债**：① `report`/`degraded_summary` 是 JSON 列，"没有报告"可能落成 SQL `NULL` 或 JSON 字面量 `null`（真实 MySQL 8.0.41 上实测 `report IS NULL` 为 0 而 `JSON_TYPE(report)` 为 `'NULL'`），将来用 SQL 过滤"有报告"会踩；② 保留策略默认 `INCIDENT_RUN_RETENTION_DAYS=0`（关闭），**从未在真实默认配置下开启运行过**，只在测试与一次"savepoint 内执行后回滚"的真实 MySQL 验证里跑过。
 
 ### 5.3 下一步顺序（用户已定：A → B → C）
@@ -150,6 +150,13 @@ GitHub 账号     : 3262253821
 - **C（进行中）**：**P1-5-1 已完成**（`39f1fe2`：7 个压行文件展开 + 排版守门测试）、**P1-5-2 已完成**（`730268d`：步骤契约统一 + CI 类型比对）；**下一步 P1-5-3**（前端测试与可访问性：Vitest/组件测试 + `focus-visible`/`role=dialog`/ESC/焦点管理/`aria-live`/`prefers-reduced-motion`），之后 P1-5-4 ~ P1-5-6，一次收掉 401 处理、历史抽屉交互与字段级提示。
 
 用户明确指定按这个顺序推进；**仍然遵守"一次一项、做完等指示"**，不要连做两项。
+
+**P1-5-3 开工前要知道的事**（这一项与前面几项不同，它会引入新依赖）：
+
+- 会**新增前端依赖**：Vitest + `@vue/test-utils` + `jsdom`，动 `package.json` 与 `package-lock.json`；装完后 CI 前端 job 里的 `npm ci` 才有这些包（本地 `npm install` 需要网络）。
+- 还要把 `npm run test` 加进 `.github/workflows/ci.yml` 的前端 job——**改 YAML 前后都要跑一次 `tests/test_ci_workflow.py`**（P1-4-5 的事故：一个冒号写错就得到一个 0 job 的失败运行）。
+- `web/src/utils/time.ts` 现在是 `node --experimental-strip-types tmp\check_time_helpers.ts` 手跑的 14 条用例（见 7.4），应当**搬进正式测试**，避免两套并存。
+- 可访问性那半边改的是 `HistoryDrawer.vue`（`role=dialog`/ESC/焦点陷阱与归还）、`IncidentWorkspaceView.vue`（加载态 `aria-live`）、`styles.css`（`:focus-visible`、`prefers-reduced-motion`）——注意 `styles.css` 已被 P1-5-1 展开成 1052 行、并受排版守门测试约束（一条规则/声明各占一行，单行 ≤200 字符）。
 
 ---
 
@@ -165,7 +172,7 @@ GitHub 账号     : 3262253821
    —— 涉及 DevAtlas 接口时必须读 E:\RagKnowledgeSystem\backend 的真实代码
 
 3. 实现改动，然后按顺序验证：
-     py -m pytest tests -q            # 必须全绿（当前基线 366 passed）
+     py -m pytest tests -q            # 必须全绿（当前基线 380 passed）
      py -m ruff check .               # 全仓必须 0（CI 也跑这条）
      py -m compileall -q app migrations tests
      py -m alembic check              # 只在动了 models/ 时才需要（需本机 MySQL）
@@ -235,7 +242,7 @@ NO_PROXY=localhost,127.0.0.1,::1,[::1]
 
 `[::1]` 这个写法会让 `httpx.Client` 在**构造阶段**就抛 `InvalidURL: Invalid port: ':1]'`（httpx 把它拼成 `all://*[::1]` 模式）。后果与处理：
 
-- **pytest**：会让 23 条测试在任何断言之前失败 → 已由 `tests/conftest.py` 在会话开始时清掉代理变量修好，现在应当是 **366 passed**；
+- **pytest**：会让 23 条测试在任何断言之前失败 → 已由 `tests/conftest.py` 在会话开始时清掉代理变量修好，现在应当是 **380 passed**；
 - **真实服务**：所有 DevAtlas 调用（登录、知识库授权、检索）都会 500（已复现 `exception_type: InvalidURL`）→ 用 `tmp/run_agent_clean.py` 启动（它在 Python 里 pop 掉代理变量再 `uvicorn.run`）；
 - **注意**：在这个 shell 里 `$env:NO_PROXY=...` 对子进程**无效**（每层子进程都会被重新注入），必须由 Python 进程自己 pop。
 
@@ -244,7 +251,7 @@ NO_PROXY=localhost,127.0.0.1,::1,[::1]
 - `requirements-lock.txt`（62 个精确版本）+ `requirements-dev.txt`（pytest、ruff）是复现环境的正确入口；`requirements.txt` 是**经实测校准的下限**（`openai>=3.0`、`langchain-core>=1.0`、`langchain-openai>=1.0`、`langgraph>=1.0`、`httpx>=0.28`），旧下限（0.3/0.27）会把干净环境装成另一个大版本。
 - 本机关键的实测版本：openai 3.13.0、langchain-core 1.6.3、langchain-openai 1.6.2、langgraph 1.2.11、fastapi 0.141.1、SQLAlchemy 2.0.52、pydantic 2.13.5、alembic 1.20.0、httpx 0.28.1、pytest 9.1.1、ruff 0.16.5。
 - `.env`（不提交）需要：`INCIDENT_DB_*`、`DEVATLAS_BASE_URL`、`DEEPSEEK_API_KEY`。可选变量与默认值见 `.env.example`（含 `INCIDENT_RUN_RETENTION_DAYS=0`）。
-- **测试不需要 MySQL**：全部 366 条测试使用 SQLite 内存库，可离线运行；只有 `alembic check` 需要本机 MySQL。**但两件事要注意**：① 缺少 `INCIDENT_DATABASE_URL` 时连 `import app.main` 都会抛 `RuntimeError`（配置强校验），所以干净环境（含 CI）必须提供一个数据库 URL（CI 用 `sqlite+pysqlite:///:memory:`）；② 每个 API 测试都要自己覆盖 `get_db`，否则会走开发机 `.env` 指向的真实 MySQL（见第 9 节第 10/11 条）。
+- **测试不需要 MySQL**：全部 380 条测试使用 SQLite 内存库，可离线运行；只有 `alembic check` 需要本机 MySQL。**但两件事要注意**：① 缺少 `INCIDENT_DATABASE_URL` 时连 `import app.main` 都会抛 `RuntimeError`（配置强校验），所以干净环境（含 CI）必须提供一个数据库 URL（CI 用 `sqlite+pysqlite:///:memory:`）；② 每个 API 测试都要自己覆盖 `get_db`，否则会走开发机 `.env` 指向的真实 MySQL（见第 9 节第 10/11 条）。
 
 ### 7.4 前端工具函数的真实验证方式（前端还没有测试框架）
 
@@ -310,14 +317,17 @@ incident_agent.agent_runs: owner 1 有 4 条，owner 5 有 1 条（合计 5 条�
 11. **测试里的 `get_db` 必须自己覆盖**：开发机的 `.env` 指向真实 MySQL，漏覆盖时用例会"因为机器上恰好有表"而通过（`test_error_handling` 就踩过：干净检出里 404 变 500）。新写 API 测试时先问一句"这条请求会不会真的查库"。
 12. **workflow 的 YAML 对冒号很敏感**：`KEY: sqlite+pysqlite:///:memory:` 这种**以冒号结尾的裸标量**会让整个文件解析失败。GitHub 的表现是产出一个 **0 job 的失败运行**、工作流名退化成 `.github/workflows/ci.yml`——看到这个形态先怀疑 YAML 而不是测试。`tests/test_ci_workflow.py` 已把"workflow 能解析且关键步骤在"变成回归测试。
 13. **查 GitHub Actions 结果别走代理**：`api.github.com` 走 Clash 出口会被共享 IP 的匿名配额限流（403）。`httpx.Client(trust_env=False)` 直连即可（`tmp/gh_runs.py`）。
+14. **Vue 模板的空白是有语义的，"换行"与"空格"不等价**（P1-5-1 实测；编辑任何 `.vue` 模板前先读这条）：`whitespace: 'condense'` 下，**元素与元素之间**新增的换行会被整段删除（安全），但**紧贴文本或插值**的换行会被并进文本、变成一个空格——`<label>用户名<input/></label>` 拆成三行后文本会变成 `" 用户名 "`，渲染凭空多出空格。规律：拆行只在元素边界做；混合内容（文本/插值与元素相邻）必须留在同一行；一行太长时只拆"最内层标签的属性"（标签内部的空白无意义）。P1-5-1 用 `@vue/compiler-sfc` 的 `compileTemplate` 产物逐字节比对验证过这些规则，探针在 `tmp/p151_probe.mjs`（`tmp/` 不提交）。
+15. **别把 `ts.createPrinter()` 当成"空白无关的规范化"**（P1-5-1 走过这段弯路）：TypeScript 的 printer 对**未变换的解析节点**会直接回写原始源码片段，换行与缩进照样留在输出里——看起来比较过了，其实什么都没规范化（第一次就是这么被骗过的）。要比对脚本层语义，用 AST 叶子 **token 流**（忽略显式分号与尾随逗号即可；字符串内部空格仍逐字比对，注释单独比对）。
+16. **`app.openapi()` 就是真实服务外发的契约**（P1-5-2 实测）：真实启动服务后 HTTP 拉 `/openapi.json`，13 个受约束组件与进程内 `app.openapi()` 逐字节相等，所以类型契约测试不必起服务。但 `RunResponse.steps`/`observations` 在后端是 JSON dict，OpenAPI 里只有 `array<object>`——这类"后端没有 Pydantic 模型"的载荷必须用**真实数据**比对（P1-5-2 的做法：跑真实 Graph + `append_steps` 落库往返）。
 
 ---
 
 ## 10. 尚未验证 / 已知功能边界（如实列出，不要当成已完成）
 
 1. **真实模型返回与真实检索未跑通**（见 5.2 第 2 条）：已验证的是真实 DB、真实鉴权、真实 HTTP、真实过期令牌；**分析链路仍靠 FakeModel/MockRagGateway**。
-2. **~~CI 在 GitHub 上的运行结果未确认~~ → 已确认（2026-09-15）**：run `34930276951` 两个 job 全绿，P1-4-5 已勾选。顺带发现并修掉了三类"只在开发机上通过"的缺陷（无 `.env` 时收集阶段失败、两条用例依赖真实 MySQL、workflow 里的 YAML 引号），其中第一条正是 CI 一直红的原因。
-3. **前端没有自动化测试**：只有 `vue-tsc` + `vite build` 与一次 Node 直跑时间工具。
+2. **~~CI 在 GitHub 上的运行结果未确认~~ → 已确认（2026-09-15）**：run `34930276951` 两个 job 全绿，P1-4-5 已勾选；此后每一项推送后都读了真实结果（P1-5-1：`34932240446`；P1-5-2：`34941997248`、`34942094169`），**都全绿**。顺带发现并修掉了三类"只在开发机上通过"的缺陷（无 `.env` 时收集阶段失败、两条用例依赖真实 MySQL、workflow 里的 YAML 引号），其中第一条正是 CI 一直红的原因。
+3. **前端没有浏览器级自动化测试**（P1-5-3 开始解决）：只有 `vue-tsc` + `vite build`，加上 P1-5-1/P1-5-2 留下的两个 **Python 侧**守门测试（`tests/test_frontend_formatting.py` 管排版、`tests/test_api_type_contract.py` 管类型契约）与一次 Node 直跑时间工具；界面行为本身仍无自动手段。
 4. **保留策略从未在真实默认配置下开启运行过**（默认关闭）。
 5. **已知功能边界**（有意设计，不是漏项）：`138-0013-8000` 这类带分隔符的手机号不会被脱敏命中；`AgentStep.arguments_summary` 等的原始文本不入库（只存长度/计数）；历史列表不返回 `total`（用游标判断是否还有下一页）。
 6. **测试侧的已知边界**（P1-4-1 记账时确认，详见 `docs/测试对照-设计文档章节.md` 第 5 节）：① 设计文档 §17.2 案例 7 写的是"服务状态工具超时"，但 `get_service_status` 是进程内 mock、没有 I/O，所以**不可复现**，现用检索超时（`RAG_TIMEOUT`）覆盖其意图，真实 provider 属 P2-5；② `analyze_log` 的 `MAX_MATCHED_TEXT = 120` 在现有 4 个正则下**不可达**（最长命中 11 字符），属防御性代码、无法构造用例。
