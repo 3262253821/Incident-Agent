@@ -136,6 +136,15 @@ GET  /api/v1/runs/{run_id}
 
 `/api/v1/incidents/analyze` 必须携带 DevAtlas Bearer JWT。Agent 只在当前请求中转发 Token，不保存 Token。
 
+历史接口的职责是分开的：
+
+| 接口 | 返回 | 说明 |
+| --- | --- | --- |
+| `GET /api/v1/runs` | `RunSummary[]` | 只返回身份、状态、计数、时间与错误摘要；一次查询，不带 `observations` / `steps` / `report` |
+| `GET /api/v1/runs/{run_id}` | `RunResponse` | 完整轨迹（`observations`、`steps`、`report`、`degraded_summary`），steps 用一次批量查询预加载 |
+
+因此前端打开历史抽屉时先拉列表，点开某一条时再拉详情。两个接口都按 `owner_user_id` 过滤，猜中别人的 `run_id` 只会得到 404。
+
 ## 验证
 
 ```powershell

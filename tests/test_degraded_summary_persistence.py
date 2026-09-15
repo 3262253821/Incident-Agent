@@ -246,12 +246,16 @@ def test_history_endpoint_returns_the_persisted_summary(monkeypatch):
     assert listed.status_code == 200
     assert detail.status_code == 200
 
-    for payload in (listed.json()[0], detail.json()):
-        summary = payload["degraded_summary"]
-        assert summary is not None, "历史接口必须返回已持久化的降级摘要"
-        assert summary["reason"] == RunStatus.DEGRADED
-        assert summary["failed_tools"] == ["search_knowledge"]
-        assert summary["text"]
-        assert summary["suggestions"]
+    # 列表自 P1-3-1 起只返回摘要，完整降级摘要必须仍然能从详情接口读回来。
+    summary = listed.json()[0]
+    assert summary["run_id"] == run_id
+    assert summary["status"] == RunStatus.DEGRADED
+    assert summary["observations_count"] >= 1
+    assert "degraded_summary" not in summary
 
-    assert listed.json()[0]["degraded_summary"] == detail.json()["degraded_summary"]
+    restored = detail.json()["degraded_summary"]
+    assert restored is not None, "历史详情必须返回已持久化的降级摘要"
+    assert restored["reason"] == RunStatus.DEGRADED
+    assert restored["failed_tools"] == ["search_knowledge"]
+    assert restored["text"]
+    assert restored["suggestions"]

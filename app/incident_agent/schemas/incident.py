@@ -2,9 +2,49 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+# 列表接口只带足以识别一条失败的信息；完整错误文本留给详情接口。
+ERROR_SUMMARY_MAX_LENGTH = 240
+
+
+def iso_utc(value: datetime | None) -> str | None:
+    """Serialise a stored naive-UTC datetime as ISO 8601 with an explicit offset.
+
+    Timestamps are persisted as **naive UTC** (see ``models.agent_run.utc_now``),
+    because neither MySQL ``DATETIME`` nor SQLite keeps the offset. Adding the
+    ``+00:00`` designator is therefore an API-boundary job: without it the
+    frontend would parse a UTC wall clock as local time.
+    """
+
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat()
+
+
+def summarize_error(
+    error: str | None,
+    *,
+    max_length: int = ERROR_SUMMARY_MAX_LENGTH,
+) -> str | None:
+    """Shorten a stored error so a history list stays small.
+
+    ``AgentRun.error`` is a ``TEXT`` column: a graph failure can carry a provider
+    message plus the elapsed-budget note. The list only needs enough to recognise
+    the failure; the untruncated string stays available on the detail endpoint.
+    """
+
+    if error is None:
+        return None
+    text = error.strip()
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max_length - 1].rstrip()}…"
 
 
 class IncidentAnalyzeRequest(BaseModel):
@@ -120,6 +160,39 @@ class DegradedSummary(BaseModel):
     )
     service_statuses: list[str] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
+
+
+class RunSummary(BaseModel):
+    """Lightweight history row returned by ``GET /api/v1/runs``.
+
+    The list endpoint must not carry full trajectories: the history drawer only
+    renders identity, outcome and counts, while ``observations``/``report`` can be
+    arbitrarily large JSON. ``GET /api/v1/runs/{run_id}`` still returns the full
+    ``RunResponse`` payload, so opening a row costs one extra request by design.
+
+    There is deliberately no ``has_report`` boolean: ``report`` and
+    ``degraded_summary`` are JSON columns, and "no report" is stored either as SQL
+    ``NULL`` or as the JSON literal ``null`` depending on the write path (verified
+    on MySQL 8.0 with ``JSON_TYPE``). ``status`` already carries the outcome, and
+    a boolean derived from ``IS NOT NULL`` would have been true for both.
+    """
+
+    run_id: str
+    title: str
+    status: str
+    knowledge_base_id: int
+    iteration: int
+    max_iterations: int
+    steps_count: int
+    observations_count: int
+    interrupted: bool = False
+    error: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    @field_serializer("started_at", "completed_at", when_used="json")
+    def _serialise_timestamps(self, value: datetime | None) -> str | None:
+        return iso_utc(value)
 
 
 class RunResponse(BaseModel):

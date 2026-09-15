@@ -1,7 +1,13 @@
 """Pydantic contracts grouped by application boundary."""
 
 from .auth import LoginRequest, TokenResponse, UserPublic
-from .incident import EvidenceItem, IncidentAnalyzeRequest, IncidentReport, RunResponse
+from .incident import (
+    EvidenceItem,
+    IncidentAnalyzeRequest,
+    IncidentReport,
+    RunResponse,
+    RunSummary,
+)
 from .knowledge_base import RagKnowledgeBase
 from .rag import RagSearchResponse, RagSource
 from .tool import (
@@ -22,6 +28,7 @@ __all__ = [
     "RagSearchResponse",
     "RagSource",
     "RunResponse",
+    "RunSummary",
     "SearchKnowledgeArgs",
     "ToolResult",
     "TokenResponse",

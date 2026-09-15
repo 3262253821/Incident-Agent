@@ -2,16 +2,37 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..db.session import get_db
 from ..dependencies import get_current_user
 from ..schemas.auth import UserPublic
-from ..schemas.incident import RunResponse
-from ..services.storage import get_run_for_owner, list_runs_for_owner
+from ..schemas.incident import RunResponse, RunSummary, summarize_error
+from ..services.storage import get_run_for_owner, list_run_summaries_for_owner
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
+
+
+def _to_summary(row: dict[str, Any]) -> RunSummary:
+    """Convert one flat summary row into the public list contract."""
+
+    return RunSummary(
+        run_id=row["run_id"],
+        title=row["title"],
+        status=row["status"],
+        knowledge_base_id=row["knowledge_base_id"],
+        iteration=row["iteration"],
+        max_iterations=row["max_iterations"],
+        steps_count=row["steps_count"],
+        observations_count=row["observations_count"],
+        interrupted=row["interrupted_at"] is not None,
+        error=summarize_error(row["error"]),
+        started_at=row["started_at"],
+        completed_at=row["completed_at"],
+    )
 
 
 def _to_response(run) -> RunResponse:
@@ -44,17 +65,21 @@ def _to_response(run) -> RunResponse:
     )
 
 
-@router.get("", response_model=list[RunResponse])
+@router.get("", response_model=list[RunSummary])
 def list_runs(
     limit: int = Query(default=20, ge=1, le=100),
     current_user: UserPublic = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[RunResponse]:
-    """Return recent runs owned by the authenticated DevAtlas user."""
+) -> list[RunSummary]:
+    """Return recent runs owned by the authenticated DevAtlas user.
+
+    Summaries only: full observations/steps/report stay behind the detail route,
+    so the payload no longer grows with the size of every stored log.
+    """
 
     return [
-        _to_response(run)
-        for run in list_runs_for_owner(
+        _to_summary(row)
+        for row in list_run_summaries_for_owner(
             db,
             owner_user_id=current_user.id,
             limit=limit,

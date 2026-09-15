@@ -13,7 +13,7 @@ import { checkHealth } from '../api/system'
 import { RUN_STATUS, runStatusLabel, runStatusTone } from '../constants/status'
 import { useAuthStore } from '../stores/auth'
 import { useIncidentStore } from '../stores/incident'
-import type { RunResponse } from '../types/api'
+import type { RunSummary } from '../types/api'
 
 const auth = useAuthStore()
 const incident = useIncidentStore()
@@ -81,9 +81,13 @@ async function openHistory() {
   }
 }
 
-function selectRun(run: RunResponse) {
-  incident.selectRun(run)
+async function selectRun(run: RunSummary) {
   showHistory.value = false
+  try {
+    await incident.selectRun(run)
+  } catch {
+    // 错误已经写进 store，这里只负责不让抽屉挡住提示。
+  }
 }
 
 onMounted(async () => {

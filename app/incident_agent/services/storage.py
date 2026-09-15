@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, update
+from sqlalchemy.orm import Session, selectinload
 
 from ..core.statuses import RunStatus
 from ..models import AgentRun, AgentStep
@@ -146,32 +146,113 @@ def get_run_for_owner(
     run_id: str,
     owner_user_id: int,
 ) -> AgentRun | None:
-    """Get one run only when it belongs to the authenticated user."""
+    """Get one run only when it belongs to the authenticated user.
+
+    ``selectinload`` fetches the steps in a second, batched statement instead of
+    leaving the relationship lazy: the detail endpoint serialises the whole
+    trajectory, so an explicit eager load keeps it at two queries in total
+    regardless of how many steps the run has.
+    """
 
     return db.scalar(
-        select(AgentRun).where(
+        select(AgentRun)
+        .where(
             AgentRun.run_id == run_id,
             AgentRun.owner_user_id == owner_user_id,
         )
+        .options(selectinload(AgentRun.steps))
     )
 
 
-def list_runs_for_owner(
+def _observations_count_expression(dialect_name: str):
+    """Count stored observations in SQL, without loading the JSON payload.
+
+    Both supported dialects can measure a JSON array in place: MySQL has
+    ``JSON_LENGTH`` and SQLite ships JSON1 as ``json_array_length`` (available in
+    the 3.45 runtime this project uses). Neither needs the blob itself, which is
+    what keeps the list payload small.
+    """
+
+    if dialect_name == "sqlite":
+        return func.json_array_length(AgentRun.observations)
+    return func.json_length(AgentRun.observations)
+
+
+def build_run_summary_statement(
+    *,
+    dialect_name: str,
+    owner_user_id: int,
+    limit: int,
+):
+    """Build the single summary query for one owner.
+
+    Split out from ``list_run_summaries_for_owner`` so the dialect-dependent JSON
+    count can be compiled and asserted without a live database connection.
+    """
+
+    step_counts = (
+        select(
+            AgentStep.run_id.label("run_id"),
+            func.count(AgentStep.id).label("steps_count"),
+        )
+        .group_by(AgentStep.run_id)
+        .subquery()
+    )
+
+    return (
+        select(
+            AgentRun.run_id,
+            AgentRun.title,
+            AgentRun.status,
+            AgentRun.knowledge_base_id,
+            AgentRun.iteration,
+            AgentRun.max_iterations,
+            AgentRun.error,
+            AgentRun.started_at,
+            AgentRun.completed_at,
+            AgentRun.interrupted_at,
+            func.coalesce(
+                _observations_count_expression(dialect_name),
+                0,
+            ).label("observations_count"),
+            func.coalesce(step_counts.c.steps_count, 0).label("steps_count"),
+        )
+        .outerjoin(step_counts, step_counts.c.run_id == AgentRun.id)
+        .where(AgentRun.owner_user_id == owner_user_id)
+        # ``id`` breaks ties: two runs created in the same microsecond must still
+        # come back in a stable order, otherwise paging later would repeat rows.
+        .order_by(AgentRun.started_at.desc(), AgentRun.id.desc())
+        .limit(limit)
+    )
+
+
+def list_run_summaries_for_owner(
     db: Session,
     *,
     owner_user_id: int,
     limit: int = 20,
-) -> list[AgentRun]:
-    """List recent runs for one authenticated user."""
+) -> list[dict[str, Any]]:
+    """List recent runs as flat summary rows, using one query for any N.
 
-    return list(
-        db.scalars(
-            select(AgentRun)
-            .where(AgentRun.owner_user_id == owner_user_id)
-            .order_by(AgentRun.started_at.desc())
-            .limit(limit)
-        )
+    Two measured costs are removed here:
+
+    - the list used to return ``AgentRun`` entities and the caller then read
+      ``run.steps`` per row, which lazy-loaded one extra statement per run (the
+      N+1 the audit measured: 5 runs -> 5 statements);
+    - the entities carried the full ``observations`` and ``report`` JSON blobs,
+      so list size grew with the log volume even though the drawer only renders
+      identity, outcome and counts.
+
+    The step count is aggregated in a subquery and both counts stay in SQL, so no
+    JSON column travels to the application for this endpoint.
+    """
+
+    statement = build_run_summary_statement(
+        dialect_name=db.get_bind().dialect.name,
+        owner_user_id=owner_user_id,
+        limit=limit,
     )
+    return [dict(row) for row in db.execute(statement).mappings()]
 
 
 def reclaim_stale_runs(

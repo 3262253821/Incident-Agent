@@ -84,6 +84,28 @@ export interface DegradedSummary {
   suggestions: string[]
 }
 
+/**
+ * Lightweight row returned by `GET /api/v1/runs`.
+ *
+ * The list endpoint deliberately omits `observations`, `steps`, `report` and
+ * `degraded_summary`: those only arrive through `GET /api/v1/runs/{run_id}` when
+ * a row is opened.
+ */
+export interface RunSummary {
+  run_id: string
+  title: string
+  status: string
+  knowledge_base_id: number
+  iteration: number
+  max_iterations: number
+  steps_count: number
+  observations_count: number
+  interrupted?: boolean
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
 export interface RunResponse {
   run_id: string
   status: string

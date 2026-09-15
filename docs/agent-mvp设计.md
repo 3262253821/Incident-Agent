@@ -1106,6 +1106,26 @@ AND agent_runs.owner_user_id = current_user_id
 
 即使用户猜中其他人的 `run_id`，也只能得到 `404`，不能返回记录是否存在。
 
+两个接口的返回粒度不同（已实现）：
+
+```text
+GET /api/v1/runs            → list[RunSummary]
+  run_id / title / status / knowledge_base_id / iteration / max_iterations
+  steps_count / observations_count / interrupted / error（截断摘要）
+  started_at / completed_at（ISO 8601，带 +00:00）
+  一条 SQL 完成：steps 计数用聚合子查询，observations 计数用
+  MySQL JSON_LENGTH / SQLite json_array_length 就地统计，
+  observations 与 report 的 JSON 正文不进入应用层。
+
+GET /api/v1/runs/{run_id}   → RunResponse（完整轨迹）
+  observations / steps / report / degraded_summary 全量返回，
+  steps 用 selectinload 一次批量加载（1 + 1 条查询，与步数无关）。
+```
+
+原因：列表接口原先返回完整 `RunResponse`，并在序列化时逐条懒加载 `steps`（N 条 run 产生 N 条额外查询）；而列表只需要识别一条记录、判断状态和展示计数，`observations`（含 RAG 正文）与 `report` 的体积随日志增长。把"识别"和"回看轨迹"拆成两个接口后，列表的查询数与响应体积都与 run 数量、日志长度无关。
+
+前端对应关系：抽屉只渲染 summary；点击某一条时调用详情接口加载完整轨迹（`web/src/api/runs.ts`）。
+
 ### 13.4 Web UI 与 SSE
 
 第一版 Web UI 使用同步 JSON 也可以先跑通，但 Web Harness 的目标接口为：

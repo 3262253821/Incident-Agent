@@ -1,20 +1,30 @@
 <script setup lang="ts">
 import { ArrowRight, X } from 'lucide-vue-next'
 import { RUN_STATUS, statusLabel } from '../constants/status'
-import type { RunResponse } from '../types/api'
+import type { RunSummary } from '../types/api'
 
-defineProps<{ runs: RunResponse[] }>()
-const emit = defineEmits<{ close: []; select: [run: RunResponse] }>()
+defineProps<{ runs: RunSummary[] }>()
+const emit = defineEmits<{ close: []; select: [run: RunSummary] }>()
 
 /** 被中断的运行与普通 degraded 区分开，避免历史和主状态展示不一致。 */
-function runLabel(run: RunResponse) {
+function runLabel(run: RunSummary) {
   if (run.interrupted) return 'INTERRUPTED'
   return statusLabel(run.status)
 }
 
-function runTone(run: RunResponse) {
+function runTone(run: RunSummary) {
   if (run.interrupted) return 'warn'
   return run.status === RUN_STATUS.COMPLETED ? 'good' : 'warn'
+}
+
+/** 列表只有计数；完整轨迹在点开时通过详情接口加载。 */
+function runMeta(run: RunSummary) {
+  return [
+    runLabel(run),
+    `${run.steps_count} steps`,
+    `${run.observations_count} observations`,
+    run.run_id.slice(0, 8),
+  ].join(' · ')
 }
 </script>
 
@@ -42,8 +52,8 @@ function runTone(run: RunResponse) {
     >
       <span class="history-status" :class="[runTone(item), item.status]"></span>
       <span>
-        <strong>{{ item.run_id.slice(0, 12) }}</strong>
-        <small>{{ runLabel(item) }} · {{ item.observations.length }} observations</small>
+        <strong>{{ item.title }}</strong>
+        <small>{{ runMeta(item) }}</small>
       </span>
       <ArrowRight :size="16" />
     </button>
