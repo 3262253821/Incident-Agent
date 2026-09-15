@@ -153,7 +153,7 @@ GET /api/v1/knowledge-bases
 | 接口 | 返回 | 说明 |
 | --- | --- | --- |
 | `GET /api/v1/runs` | 一页 `RunSummary` | 只返回身份（`title`/`run_id`）、状态、计数、`started_at`/`completed_at`/`duration_ms` 与错误摘要；一次查询，不带 `observations` / `steps` / `report` |
-| `GET /api/v1/runs/{run_id}` | `RunResponse` | 同一套时间字段 + 完整轨迹（`observations`、`steps`、`report`、`degraded_summary`），steps 用一次批量查询预加载 |
+| `GET /api/v1/runs/{run_id}` | `RunResponse` | 同一套时间字段 + 完整轨迹（`observations`、`steps`、`report`、`degraded_summary`），steps 用一次批量查询预加载；`steps` 与 `POST /incidents/analyze` 的响应**同形状**（11 个字段，含 `step_index`，见设计文档 §15.7） |
 
 时间一律是带 `+00:00` 的 ISO 8601（存储是 naive UTC，偏移在 API 边界补上）；`duration_ms` 由服务端派生，**未结束或被中断回收的运行是 `null`**——被回收的记录里 `completed_at` 是下一次启动发现它的时刻，拿它算耗时等于把进程宕机时长当成分析耗时。前端据此显示"3 分钟前 · 耗时 8.4s"。
 

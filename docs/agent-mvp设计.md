@@ -1028,6 +1028,8 @@ GET  /api/v1/runs
 GET  /health
 ```
 
+> 两个会返回轨迹的接口（`POST /incidents/analyze` 与 `GET /runs/{run_id}`）共用同一份步骤字段投影（`services/step_payload.py`）：`step_index` / `iteration` / `node` / `action` / `tool_name` / `tool_call_id` / `arguments_summary` / `result_summary` / `status` / `error_code` / `duration_ms`。详见 §15.7（P1-5-2）。
+
 ### 13.2 分析请求
 
 请求必须携带：
@@ -1335,6 +1337,22 @@ INCIDENT_LOG_FORMAT  默认 json，可设为 text 便于本地阅读
 ```
 
 正则改用**显式数字边界** `(?<!\d)5\d{2}(?!\d)`：原先的 `\b502\b` 只是碰巧挡住了 `15020`，而 `5\d{2}` 同时覆盖 502/503/504 等 5xx，也不会把订单号里的数字当命中。
+
+### 15.7 已实现：步骤轨迹的公开字段只有一份（P1-5-2）
+
+`POST /api/v1/incidents/analyze` 与 `GET /api/v1/runs/{run_id}` 现在用**同一个投影函数**（`services/step_payload.py`）产出步骤，公开字段恒为 11 个，与 `agent_steps` 表一一对应：
+
+```text
+step_index / iteration / node / action / tool_name / tool_call_id /
+arguments_summary / result_summary / status / error_code / duration_ms
+```
+
+修掉的两个真实问题（实测，不是推测）——修之前同一次运行的 5 条步骤在 analyze 响应里有 **4 种形状**、字段并集 15 个：
+
+1. **内部字段泄漏**：analyze 直接透出 Graph 的步骤字典，于是 `_started_at`（`time.monotonic()` 起点）、`ok`、`attempts`、`tool_call_count`、`unverified_count` 都进了公开响应，而它们都不落库；
+2. **`step_index` 只在 detail 接口存在**：它由 `append_steps` 在持久化时按 1..N 写入，analyze 响应没有它，而前端把它当列表 key（`ExecutionTrace.vue`），于是 key 退化成 `undefined-0`、`undefined-1`。
+
+副作用是前端类型只能写成"两种形状的并集"，`ok`、`step_index` 这类字段被迫标成可选，字段漂移因此无法被发现。现在 `web/src/types/api.ts` 的 `AgentStep` 与真实载荷逐字段一致，并由 `tests/test_api_type_contract.py` 在 CI 里守住（含"两个接口必须同形状"的断言）。
 
 
 ---
