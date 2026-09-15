@@ -81,9 +81,16 @@ def elapsed_ms(
 
 
 class IncidentAnalyzeRequest(BaseModel):
-    """Request submitted by the Web UI or CLI."""
+    """Request submitted by the Web UI or CLI.
 
-    model_config = ConfigDict(extra="forbid")
+    ``str_strip_whitespace`` exists because ``min_length=1`` alone accepts a
+    title or log that is only spaces: the design requires "空标题/空内容 → 422"
+    (§16.1), and a blank prompt would otherwise reach the model and the tools.
+    Stripping happens before the length check, so ``"   "`` becomes ``""`` and is
+    rejected. The frontend trims as well; this is the server-side guarantee.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=20_000)

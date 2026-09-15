@@ -4,6 +4,8 @@ The live probe found a gap: the summary existed only in the POST response, so
 reopening the run from history showed ``degraded_summary: null``. These tests pin
 the round-trip: what the live response returns must be what the history endpoint
 returns later.
+
+设计文档章节：§16.5 失败降级、§12.1 MVP 记录内容。
 """
 
 from __future__ import annotations

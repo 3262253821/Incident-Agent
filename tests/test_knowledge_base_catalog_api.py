@@ -10,6 +10,8 @@ properties that make the proxy safe to rely on:
   challenge, safe ``502``/``503``) instead of leaking status codes or text;
 - a broken upstream payload is an error, not an empty dropdown;
 - the endpoint never touches the Agent database.
+
+设计文档章节：§2.3 集成原则（Token 只转发）、§13.1 API 一览（本端点为 P1-6-1 新增，设计文档尚未收录）。
 """
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+"""设计文档章节：§6.1 analyze_log、§6.2 search_knowledge、§6.3 get_service_status、§7 统一工具结果协议。
+"""
+
 from __future__ import annotations
 
 from app.incident_agent.services.rag_client import MockRagGateway

@@ -8,6 +8,8 @@ change cannot silently flip it:
 - both MySQL ``DATETIME`` and SQLite hand the value back naive, so
   ``DateTime(timezone=True)`` would change nothing that is stored;
 - values are written as naive UTC and serialised as ISO 8601 at the API edge.
+
+设计文档章节：§12.1 MVP 记录内容（时间一律 naive UTC 存储）。
 """
 
 from __future__ import annotations

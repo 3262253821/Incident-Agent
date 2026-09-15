@@ -9,6 +9,8 @@
    写失败后留下的 `running` 记录要能被启动回收机制收尾；
 4. **失败状态持久化**：`degraded` / `report_validation_failed` 真的落库，并且能通过
    列表的状态过滤与详情接口读回来。
+
+设计文档章节：§13.3.1 运行记录权限、§12.4 中断记录回收、§16.1 输入异常。
 """
 
 from __future__ import annotations

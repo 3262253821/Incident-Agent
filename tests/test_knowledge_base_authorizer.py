@@ -4,6 +4,8 @@ Covers the contract that used to be implicit: DevAtlas answers ``404`` for both
 "knowledge base does not exist" and "knowledge base belongs to another user",
 so the Agent must treat those the same, and must never let a run be created
 before the check passes.
+
+设计文档章节：§2.3 集成原则、§11.1 适配器接口、§13.2 分析请求。
 """
 
 from __future__ import annotations

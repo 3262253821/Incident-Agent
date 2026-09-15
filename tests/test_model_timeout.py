@@ -5,6 +5,8 @@ Three separate concerns:
 - ``create_chat_model`` must not inherit the SDK's 600s timeout / 2 retries;
 - both model-calling nodes must respect the shared request deadline;
 - SDK exceptions must become ``MODEL_*`` codes instead of leaking to the caller.
+
+设计文档章节：§11.4 超时和重试（含「已实现：模型超时、请求预算与错误归一化」）。
 """
 
 from __future__ import annotations

@@ -3,6 +3,8 @@
 The completion standard is behavioural: malicious text inside the incident log
 or inside a retrieved document must not change the tool whitelist, the graph
 routing, or the evidence sources.
+
+设计文档章节：§16.3 Prompt Injection、§16.3.1 不可信内容定界与注入中和。
 """
 
 from __future__ import annotations

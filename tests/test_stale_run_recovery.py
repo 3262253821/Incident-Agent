@@ -3,6 +3,8 @@
 ``create_run`` commits a ``running`` row before the graph starts, so a killed or
 reloaded process leaves rows that stay ``running`` forever. The fix marks only
 genuinely stale rows, and only at startup.
+
+设计文档章节：§12.4 中断记录的回收。
 """
 
 from __future__ import annotations

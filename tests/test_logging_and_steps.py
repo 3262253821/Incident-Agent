@@ -5,6 +5,8 @@ Covers the three parts of P1-1:
 - ``core/logging.py``: JSON lines, secret masking, truncation, idempotent setup;
 - the graph/service: ``duration_ms`` and sanitized summaries on every step;
 - ``analyze_log``: matched fragment + line number, explicit 5xx boundaries.
+
+设计文档章节：§15.1 每步至少记录、§15.2 不记录的内容、§15.3 必须能回答的问题、§15.5 步骤摘要与耗时、§15.6 analyze_log 信号解释。
 """
 
 from __future__ import annotations

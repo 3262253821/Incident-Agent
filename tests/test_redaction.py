@@ -4,6 +4,8 @@ The completion standard for this item is a negative assertion: after a run with
 credential-shaped incident input, the raw secrets must not be findable in the
 persisted rows or in the API response. ``RAW_SECRETS`` below is asserted against
 the whole serialized payload, not just a couple of fields.
+
+设计文档章节：§12.2 敏感数据规则、§12.2.1 脱敏落地位置。
 """
 
 from __future__ import annotations

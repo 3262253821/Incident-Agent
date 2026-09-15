@@ -8,6 +8,8 @@
    且任何过滤组合都不能越过 `owner_user_id` 这道边界；
 3. **保留策略**：默认不删除；启用后按 `started_at` 删除并连带删除 steps，边界上
    保留 cutoff 当刻的记录。
+
+设计文档章节：§13.3.2 历史分页、过滤与保留策略、§12.1 MVP 记录内容。
 """
 
 from __future__ import annotations

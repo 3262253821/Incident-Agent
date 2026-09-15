@@ -137,6 +137,8 @@ GET  /api/v1/runs/{run_id}
 
 `/api/v1/incidents/analyze` 必须携带 DevAtlas Bearer JWT。Agent 只在当前请求中转发 Token，不保存 Token。
 
+入参边界（超限或为空一律 `422`，**不会进入模型与工具**）：`title` 1–200 字、`content` 1–20 000 字、`knowledge_base_id > 0`、`top_k` 1–10；首尾空白先被去掉，所以纯空白的标题/内容同样按空值拒绝。
+
 知识库下拉的数据来源：
 
 ```text

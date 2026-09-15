@@ -3,6 +3,8 @@
 These go through FastAPI so the HTTP status codes are covered end to end, and
 they assert the persisted side effect: a rejected knowledge base must not leave
 an ``agent_runs`` row behind.
+
+设计文档章节：§13.3.1 运行记录权限、§2.3 集成原则。
 """
 
 from __future__ import annotations

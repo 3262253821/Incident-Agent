@@ -1,3 +1,6 @@
+"""设计文档章节：§17.2 案例 1/8/10、§9.2 正常路径、§9.3 工具失败、§9.4 报告路径、§9.5 循环保护。
+"""
+
 from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage

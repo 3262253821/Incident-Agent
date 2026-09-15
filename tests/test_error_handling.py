@@ -7,6 +7,8 @@ Two halves:
   log can be correlated by ``request_id``;
 - ``services/auth.py``: upstream 422 / 429 / 5xx / timeout are no longer all
   collapsed into 502.
+
+设计文档章节：§13.3 API 状态码、§11.4 超时和重试、§16.2 工具异常。
 """
 
 from __future__ import annotations

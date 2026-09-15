@@ -3,6 +3,8 @@
 A failed run must still tell the user what was actually established. The summary
 is assembled from recorded observations only, so these tests also assert that no
 model output and no invented content can appear in it.
+
+设计文档章节：§16.5 失败降级、§11.4 超时与重试。
 """
 
 from __future__ import annotations

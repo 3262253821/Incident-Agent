@@ -5,6 +5,8 @@ Covers the two halves of the feature:
 - ``collect_allowed_sources``: what counts as real evidence from this run;
 - ``verify_report_evidence``: stamp real references onto traceable citations and
   drop the ones that cannot be traced.
+
+设计文档章节：§10.4 证据核验。
 """
 
 from __future__ import annotations

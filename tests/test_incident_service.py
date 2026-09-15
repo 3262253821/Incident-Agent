@@ -1,3 +1,6 @@
+"""设计文档章节：§5.1 Agent 输入、§13.2 分析请求、§6.2 search_knowledge。
+"""
+
 from __future__ import annotations
 
 from langchain_core.messages import AIMessage

@@ -3,6 +3,8 @@
 The old implementation computed the next ``step_index`` from ``count(*) + 1`` and
 only appended, which collides with ``uq_agent_steps_run_index`` whenever a run is
 written twice. These tests pin the replacement contract.
+
+设计文档章节：§12.1 MVP 记录内容、§12.5 步骤追加的幂等与并发。
 """
 
 from __future__ import annotations

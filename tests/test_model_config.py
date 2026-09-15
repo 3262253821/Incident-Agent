@@ -3,6 +3,8 @@
 Model behaviour must be tunable from ``Settings`` / environment variables rather
 than literals in ``services/llm.py``, and the report node must be able to use a
 different model from the decision node.
+
+设计文档章节：§14 配置设计。
 """
 
 from __future__ import annotations

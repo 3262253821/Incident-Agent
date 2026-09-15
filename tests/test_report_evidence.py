@@ -3,6 +3,8 @@
 A structurally valid report is not an evidence-backed report. These tests pin
 the rule: a report with no successful tool observation must not be presented as
 a completed analysis, and the model's own confidence claim must be dropped.
+
+设计文档章节：§8.4 状态值、§10.3 证据来源规范、§10.4 证据核验、§16.4 报告幻觉控制。
 """
 
 from __future__ import annotations

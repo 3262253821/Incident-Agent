@@ -7,6 +7,8 @@ Two layers are covered:
   looks like JSON;
 - the report node: at most **one** repair request after a failed attempt, and a
   controlled degradation when both attempts fail.
+
+设计文档章节：§10.2 报告生成原则、§16.4 报告幻觉控制。
 """
 
 from __future__ import annotations

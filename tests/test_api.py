@@ -1,3 +1,6 @@
+"""设计文档章节：§13.1 API 一览、§13.3 API 状态码。
+"""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
