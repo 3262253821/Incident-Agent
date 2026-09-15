@@ -115,12 +115,16 @@ def _initial_state(
     }
 
 
-def _response_from_state(state: AgentState) -> RunResponse:
+def _response_from_state(state: AgentState, run: AgentRun | None = None) -> RunResponse:
     """Convert the final graph state to the public API response.
 
     The graph keeps ``report`` and ``degraded_summary`` as plain dicts so they can
     be stored in JSON columns; here they are re-validated into their models for
     the typed API contract.
+
+    ``run`` is the persisted row: the timestamps and the duration shown to the
+    caller must be the ones the database actually holds, not a second clock read
+    taken in the request path.
     """
 
     raw_report = state.get("report")
@@ -128,7 +132,10 @@ def _response_from_state(state: AgentState) -> RunResponse:
 
     return RunResponse(
         run_id=state["run_id"],
+        title=state.get("title") or (run.title if run is not None else ""),
         status=state["status"],
+        started_at=run.started_at if run is not None else None,
+        completed_at=run.completed_at if run is not None else None,
         report=IncidentReport.model_validate(raw_report) if raw_report else None,
         observations=state["observations"],
         steps=state["steps"],
@@ -316,4 +323,4 @@ def execute_incident(
             "error": final_state["error"],
         },
     )
-    return _response_from_state(final_state)
+    return _response_from_state(final_state, run)

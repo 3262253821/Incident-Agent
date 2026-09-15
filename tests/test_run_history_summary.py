@@ -166,8 +166,11 @@ def test_list_returns_only_the_summary_fields(client, session_factory):
     assert len(payload) == 1
     item = payload[0]
 
-    # 契约就是 RunSummary 本身：多一个字段（例如轨迹）都算回归。
-    assert set(item) == set(RunSummary.model_fields)
+    # 契约就是 RunSummary 本身（含派生的 duration_ms）：多一个字段（例如轨迹）
+    # 都算回归。
+    assert set(item) == set(RunSummary.model_fields) | set(
+        RunSummary.model_computed_fields
+    )
     assert item["run_id"] == "run-summary-1"
     assert item["title"] == "订单服务返回 502"
     assert item["status"] == "completed"

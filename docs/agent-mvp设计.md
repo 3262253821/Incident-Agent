@@ -1112,19 +1112,32 @@ AND agent_runs.owner_user_id = current_user_id
 GET /api/v1/runs            → list[RunSummary]
   run_id / title / status / knowledge_base_id / iteration / max_iterations
   steps_count / observations_count / interrupted / error（截断摘要）
-  started_at / completed_at（ISO 8601，带 +00:00）
+  started_at / completed_at（ISO 8601，带 +00:00）/ duration_ms（服务端派生）
   一条 SQL 完成：steps 计数用聚合子查询，observations 计数用
   MySQL JSON_LENGTH / SQLite json_array_length 就地统计，
   observations 与 report 的 JSON 正文不进入应用层。
 
 GET /api/v1/runs/{run_id}   → RunResponse（完整轨迹）
-  observations / steps / report / degraded_summary 全量返回，
+  同一套 title / started_at / completed_at / duration_ms，
+  外加 observations / steps / report / degraded_summary 全量返回，
   steps 用 selectinload 一次批量加载（1 + 1 条查询，与步数无关）。
+```
+
+时间与耗时的口径（已实现，见 P1-3-2）：
+
+```text
+时间戳存储 = naive UTC（MySQL DATETIME 与 SQLite 都不保留偏移），
+             在 API 边界补 +00:00，前端再换算成本地时间展示。
+duration_ms = completed_at - started_at，仅在以下情况返回 null：
+              · 还没有 completed_at（running）
+              · 该 run 是被后续启动回收的中断记录
+                （completed_at 是"发现它已死"的时刻，差值衡量的是宕机时长）
+              · 时钟回拨，宁可没有耗时也不返回负数
 ```
 
 原因：列表接口原先返回完整 `RunResponse`，并在序列化时逐条懒加载 `steps`（N 条 run 产生 N 条额外查询）；而列表只需要识别一条记录、判断状态和展示计数，`observations`（含 RAG 正文）与 `report` 的体积随日志增长。把"识别"和"回看轨迹"拆成两个接口后，列表的查询数与响应体积都与 run 数量、日志长度无关。
 
-前端对应关系：抽屉只渲染 summary；点击某一条时调用详情接口加载完整轨迹（`web/src/api/runs.ts`）。
+前端对应关系：抽屉只渲染 summary（标题、状态、相对时间、耗时、计数）；点击某一条时调用详情接口加载完整轨迹（`web/src/api/runs.ts`）。
 
 ### 13.4 Web UI 与 SSE
 

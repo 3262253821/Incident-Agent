@@ -11,6 +11,7 @@ import HistoryDrawer from '../components/HistoryDrawer.vue'
 import { apiErrorMessage } from '../api/client'
 import { checkHealth } from '../api/system'
 import { RUN_STATUS, runStatusLabel, runStatusTone } from '../constants/status'
+import { formatDuration } from '../utils/time'
 import { useAuthStore } from '../stores/auth'
 import { useIncidentStore } from '../stores/incident'
 import type { RunSummary } from '../types/api'
@@ -39,6 +40,8 @@ const runTone = computed(() => {
   if (!runStatus.value) return 'idle'
   return runStatusTone(runStatus.value, incident.result?.interrupted)
 })
+// 运行中还没有 completed_at，耗时由服务端在结束后给出。
+const runDuration = computed(() => formatDuration(incident.result?.duration_ms))
 // 报告通过校验（含证据不足）时展示报告；否则展示证据快照。
 const showReport = computed(
   () =>
@@ -113,6 +116,7 @@ onMounted(async () => {
           <span>{{ runLabel }}</span>
           <span v-if="incident.result" class="status-id">
             {{ incident.result.run_id.slice(0, 8) }}
+            <template v-if="runDuration"> · 耗时 {{ runDuration }}</template>
           </span>
         </div>
       </section>

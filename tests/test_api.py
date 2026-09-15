@@ -59,6 +59,7 @@ def test_incident_route_executes_service_after_authentication(monkeypatch):
         assert access_token == "test-token"
         return RunResponse(
             run_id="run-api-test",
+            title="订单服务返回 502",
             status="completed",
             observations=[],
             steps=[],

@@ -104,11 +104,17 @@ export interface RunSummary {
   error: string | null
   started_at: string | null
   completed_at: string | null
+  /** 服务端派生的分析耗时；未结束或已被回收的中断运行是 null。 */
+  duration_ms: number | null
 }
 
 export interface RunResponse {
   run_id: string
+  title: string
   status: string
+  started_at: string | null
+  completed_at: string | null
+  duration_ms: number | null
   report: IncidentReport | null
   observations: Observation[]
   steps: AgentStep[]

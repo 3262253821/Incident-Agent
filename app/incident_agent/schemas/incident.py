@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_serializer,
+)
 
 # 列表接口只带足以识别一条失败的信息；完整错误文本留给详情接口。
 ERROR_SUMMARY_MAX_LENGTH = 240
@@ -45,6 +51,33 @@ def summarize_error(
     if len(text) <= max_length:
         return text
     return f"{text[: max_length - 1].rstrip()}…"
+
+
+def elapsed_ms(
+    started_at: datetime | None,
+    completed_at: datetime | None,
+    *,
+    interrupted: bool = False,
+) -> int | None:
+    """Wall-clock duration of a finished run in milliseconds, else ``None``.
+
+    Three cases return ``None`` on purpose:
+
+    - the run has not finished (a ``running`` row has no ``completed_at``);
+    - the run was reclaimed by a later startup: ``reclaim_stale_runs`` writes
+      ``completed_at = 回收时刻``, so the subtraction would measure how long the
+      process stayed dead, not how long the analysis took. Reporting that as
+      "耗时" would be actively misleading, so an interrupted run reports no
+      duration;
+    - a clock that moved backwards yields ``None`` rather than a negative value.
+    """
+
+    if interrupted or started_at is None or completed_at is None:
+        return None
+    seconds = (completed_at - started_at).total_seconds()
+    if seconds < 0:
+        return None
+    return int(round(seconds * 1000))
 
 
 class IncidentAnalyzeRequest(BaseModel):
@@ -194,12 +227,27 @@ class RunSummary(BaseModel):
     def _serialise_timestamps(self, value: datetime | None) -> str | None:
         return iso_utc(value)
 
+    @computed_field
+    @property
+    def duration_ms(self) -> int | None:
+        """Analysis duration, derived so both endpoints answer it identically."""
+
+        return elapsed_ms(
+            self.started_at,
+            self.completed_at,
+            interrupted=self.interrupted,
+        )
+
 
 class RunResponse(BaseModel):
     """Public response returned by the Agent API."""
 
     run_id: str
+    # 详情接口也要能回答「这是什么故障、什么时候跑的、花了多久」。
+    title: str
     status: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     report: IncidentReport | None = None
     observations: list[dict[str, Any]] = Field(default_factory=list)
     steps: list[dict[str, Any]] = Field(default_factory=list)
@@ -208,3 +256,18 @@ class RunResponse(BaseModel):
     degraded_summary: DegradedSummary | None = None
     # True when a previous process died mid-run and a later startup reclaimed it.
     interrupted: bool = False
+
+    @field_serializer("started_at", "completed_at", when_used="json")
+    def _serialise_timestamps(self, value: datetime | None) -> str | None:
+        return iso_utc(value)
+
+    @computed_field
+    @property
+    def duration_ms(self) -> int | None:
+        """Analysis duration; ``None`` for a run that has not finished yet."""
+
+        return elapsed_ms(
+            self.started_at,
+            self.completed_at,
+            interrupted=self.interrupted,
+        )

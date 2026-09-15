@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowRight, X } from 'lucide-vue-next'
-import { RUN_STATUS, statusLabel } from '../constants/status'
+import { runStatusLabel, runStatusTone } from '../constants/status'
+import { formatDuration, formatRelativeTime } from '../utils/time'
 import type { RunSummary } from '../types/api'
 
 defineProps<{ runs: RunSummary[] }>()
@@ -8,23 +9,25 @@ const emit = defineEmits<{ close: []; select: [run: RunSummary] }>()
 
 /** 被中断的运行与普通 degraded 区分开，避免历史和主状态展示不一致。 */
 function runLabel(run: RunSummary) {
-  if (run.interrupted) return 'INTERRUPTED'
-  return statusLabel(run.status)
+  return runStatusLabel(run.status, run.interrupted)
 }
 
+/** 状态细分：running / 证据不足 / 报告失败 / 循环上限 / 被中断 各有自己的色调。 */
 function runTone(run: RunSummary) {
-  if (run.interrupted) return 'warn'
-  return run.status === RUN_STATUS.COMPLETED ? 'good' : 'warn'
+  return runStatusTone(run.status, run.interrupted)
+}
+
+/** 一行内回答「什么时候跑的、花了多久」。 */
+function runTiming(run: RunSummary) {
+  const parts = [formatRelativeTime(run.started_at)]
+  const duration = formatDuration(run.duration_ms)
+  if (duration) parts.push(`耗时 ${duration}`)
+  return parts.filter(Boolean).join(' · ')
 }
 
 /** 列表只有计数；完整轨迹在点开时通过详情接口加载。 */
-function runMeta(run: RunSummary) {
-  return [
-    runLabel(run),
-    `${run.steps_count} steps`,
-    `${run.observations_count} observations`,
-    run.run_id.slice(0, 8),
-  ].join(' · ')
+function runCounts(run: RunSummary) {
+  return `${run.steps_count} steps · ${run.observations_count} observations`
 }
 </script>
 
@@ -53,7 +56,8 @@ function runMeta(run: RunSummary) {
       <span class="history-status" :class="[runTone(item), item.status]"></span>
       <span>
         <strong>{{ item.title }}</strong>
-        <small>{{ runMeta(item) }}</small>
+        <small>{{ runLabel(item) }} · {{ runTiming(item) }}</small>
+        <small>{{ runCounts(item) }} · {{ item.run_id.slice(0, 8) }}</small>
       </span>
       <ArrowRight :size="16" />
     </button>

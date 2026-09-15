@@ -40,7 +40,10 @@ def _to_response(run) -> RunResponse:
 
     return RunResponse(
         run_id=run.run_id,
+        title=run.title,
         status=run.status,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
         report=run.report,
         observations=run.observations or [],
         steps=[
