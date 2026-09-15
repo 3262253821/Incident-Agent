@@ -1,8 +1,14 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { Activity, BookOpen, History, RefreshCw } from 'lucide-vue-next'
 
 defineProps<{ apiOnline: boolean }>()
-const emit = defineEmits<{ refresh: []; history: [] }>()
+const emit = defineEmits<{ refresh: []; history: [trigger: HTMLElement] }>()
+/**
+ * 把触发按钮本身交给父组件：历史抽屉是模态对话框，关闭后焦点必须回到打开它的
+ * 那个按钮上，否则键盘用户的焦点会掉回 `<body>`（P1-5-3）。
+ */
+const historyButton = ref<HTMLButtonElement | null>(null)
 </script>
 
 <template>
@@ -12,7 +18,13 @@ const emit = defineEmits<{ refresh: []; history: [] }>()
       <nav class="rail-nav" aria-label="主导航">
         <button class="rail-button active" title="故障分析" aria-label="故障分析"><Activity :size="19" /></button>
         <button class="rail-button" title="知识证据" aria-label="知识证据"><BookOpen :size="19" /></button>
-        <button class="rail-button" title="运行历史" aria-label="运行历史" @click="emit('history')">
+        <button
+          ref="historyButton"
+          class="rail-button"
+          title="运行历史"
+          aria-label="运行历史"
+          @click="emit('history', historyButton as HTMLElement)"
+        >
           <History :size="19" />
         </button>
       </nav>

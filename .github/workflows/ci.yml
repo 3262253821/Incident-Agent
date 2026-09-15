@@ -67,7 +67,7 @@ jobs:
         run: alembic heads
 
   frontend:
-    name: 前端（类型检查 + 构建）
+    name: 前端（类型检查 + 单测 + 构建）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -89,3 +89,9 @@ jobs:
       - name: 类型检查与构建
         # npm run build = vue-tsc -b && vite build
         run: npm run build
+
+      - name: 运行单测
+        # npm run test = vitest run（jsdom 环境，不需要浏览器）。
+        # 放在构建之后：类型错误应当先以"类型"的身份报出来，而不是变成一堆
+        # 运行期断言失败。
+        run: npm run test

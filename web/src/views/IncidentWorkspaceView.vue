@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { AlertTriangle } from 'lucide-vue-next'
 import AppLayout from '../layouts/AppLayout.vue'
 import UserMenu from '../components/UserMenu.vue'
@@ -8,10 +8,16 @@ import ExecutionTrace from '../components/ExecutionTrace.vue'
 import ReportPanel from '../components/ReportPanel.vue'
 import DegradedPanel from '../components/DegradedPanel.vue'
 import HistoryDrawer from '../components/HistoryDrawer.vue'
+import StatusAnnouncer from '../components/StatusAnnouncer.vue'
 import { apiErrorMessage } from '../api/client'
 import { listKnowledgeBases } from '../api/knowledgeBases'
 import { checkHealth } from '../api/system'
-import { RUN_STATUS, runStatusLabel, runStatusTone } from '../constants/status'
+import {
+  RUN_STATUS,
+  runStatusAnnouncement,
+  runStatusLabel,
+  runStatusTone,
+} from '../constants/status'
 import { formatDuration } from '../utils/time'
 import { useAuthStore } from '../stores/auth'
 import { useIncidentStore } from '../stores/incident'
@@ -22,6 +28,8 @@ const incident = useIncidentStore()
 const apiOnline = ref(false)
 const showHistory = ref(false)
 const loadingMore = ref(false)
+/** 分析状态与失败原因的读屏播报文案（P1-5-3），由 `StatusAnnouncer` 渲染。 */
+const announcement = ref('')
 
 const title = ref('订单服务返回 502')
 const content = ref(
@@ -61,6 +69,29 @@ const showReport = computed(
 const evidenceCaption = computed(() =>
   runStatus.value === RUN_STATUS.INSUFFICIENT_EVIDENCE ? '未取得工具证据' : '报告未通过校验',
 )
+
+/**
+ * 状态播报（P1-5-3）。
+ *
+ * 先看 `running`：分析进行中时还没有 run 记录，`runStatus` 是空的；两个 watch 在
+ * 同一次刷新里先后触发，最后一次赋值决定屏幕阅读器读到的内容，所以终态优先于
+ * "正在分析"。失败时用错误文案覆盖——它对读屏用户比状态词更有用。
+ */
+watch(
+  () => incident.running,
+  (running) => {
+    if (running) announcement.value = '正在分析，模型正在收集证据。'
+  },
+)
+
+watch(runStatus, (status) => {
+  const message = runStatusAnnouncement(status, incident.result?.interrupted)
+  if (message) announcement.value = message
+})
+
+watch(error, (message) => {
+  if (message) announcement.value = `分析失败：${message}`
+})
 
 async function refreshHealth() {
   try {
@@ -107,6 +138,14 @@ async function submit(payload: {
   }
 }
 
+/**
+ * 打开历史抽屉。
+ *
+ * 抽屉自己会在挂载时记住 `document.activeElement` 并在卸载时把焦点还回去——按
+ * 按钮的那一刻按钮就是活动元素，所以这里不需要再传触发者。`AppLayout` 仍然把
+ * 按钮作为事件载荷发出来（见 `forms.spec.ts`），那是留给"将来改成显式传递"的
+ * 接口，目前没有第二个消费者。
+ */
 async function openHistory() {
   try {
     await incident.loadHistory()
@@ -150,13 +189,14 @@ onMounted(async () => {
       <UserMenu v-if="auth.user" :user="auth.user" @logout="auth.signOut" />
     </template>
     <div class="dashboard">
+      <StatusAnnouncer :message="announcement" />
       <section class="hero-row">
         <div>
           <div class="section-kicker">CONTROL ROOM / 01</div>
           <h2>故障初筛</h2>
           <p>让模型收集可追溯证据，再给出可执行的排查顺序。</p>
         </div>
-        <div class="run-status" :class="runTone">
+        <div class="run-status" :class="runTone" role="status" aria-atomic="true">
           <span class="status-dot"></span>
           <span>{{ runLabel }}</span>
           <span v-if="incident.result" class="status-id">
@@ -196,7 +236,7 @@ onMounted(async () => {
         :caption="evidenceCaption"
         :summary="incident.result.degraded_summary ?? null"
       />
-      <p v-if="error && !incident.result" class="form-error bottom-error">
+      <p v-if="error && !incident.result" class="form-error bottom-error" role="alert">
         <AlertTriangle :size="15" /> {{ error }}
       </p>
       <HistoryDrawer

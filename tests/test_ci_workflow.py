@@ -69,3 +69,18 @@ def test_frontend_job_still_installs_from_the_lockfile_and_builds(workflow):
     assert "npm ci" in commands
     assert "npm run build" in commands
     assert frontend["defaults"]["run"]["working-directory"] == "web"
+
+
+def test_frontend_job_runs_the_vitest_suite(workflow):
+    """P1-5-3 引入的前端单测必须在 CI 里执行。
+
+    否则那 50 条用例只是"本地跑过"：改坏了可访问性行为、删掉 `:focus-visible`
+    或让焦点管理退化，CI 依旧全绿（这正是 P1-4-5 之前"CI 一直是红的却没人知道"
+    的镜像问题——测试存在但没人跑）。
+    """
+
+    commands = " \n".join(step_runs(workflow["jobs"]["frontend"]))
+    assert "npm run test" in commands
+
+    package_json = (WORKFLOW_PATH.parents[2] / "web" / "package.json").read_text(encoding="utf-8")
+    assert '"test": "vitest run"' in package_json

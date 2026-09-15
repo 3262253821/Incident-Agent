@@ -12,6 +12,34 @@
   box-sizing: border-box;
 }
 
+/**
+ * 键盘焦点必须看得见（P1-5-3）。
+ *
+ * 此前只有 `input:focus` 的绿色边框，按钮/链接被 `outline: 0` 之后**完全没有**
+ * 键盘焦点提示（能聚焦但看不见）。`:focus-visible` 只在"键盘/读屏"这类需要
+ * 指示的场合生效，鼠标点击不会出现焦点环，所以不影响原有观感。
+ */
+:focus-visible {
+  outline: 2px solid #b7ff5f;
+  outline-offset: 2px;
+}
+
+/**
+ * 只给屏幕阅读器看的文本（P1-5-3）：焦点环的替代方案不是"藏起来"，
+ * 而是把状态写进一个视觉上不可见、但可访问性树里存在的 live region。
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -943,6 +971,25 @@ textarea {
 @keyframes pulse {
   50% {
     opacity: .45;
+  }
+}
+
+/**
+ * 减少动态效果（P1-5-3）。
+ *
+ * 覆盖三处会动的元素：状态点的 `pulse`、加载图标的 `spin`、以及 hover/焦点上的
+ * transition。用 `*` 而不是逐个选择器，是因为将来新增动画时不该再漏一次；
+ * `!important` 用于压过 `animation: pulse 1.2s infinite` 这类简写（简写里已经
+ * 含了 `animation-duration`，单写 `animation-duration` 无法覆盖）。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

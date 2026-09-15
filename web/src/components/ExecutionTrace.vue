@@ -46,7 +46,7 @@ function nodeLabel(node: string) {
       <strong>等待一次分析</strong>
       <span>模型请求、工具结果和状态变化会显示在这里。</span>
     </div>
-    <div v-else class="trace-list">
+    <div v-else class="trace-list" aria-live="polite" aria-relevant="additions text">
       <div v-if="running" class="trace-item active-trace">
         <span class="trace-marker"><LoaderCircle class="spin" :size="14" /></span>
         <div>

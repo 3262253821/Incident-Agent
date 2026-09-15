@@ -78,7 +78,11 @@ function submit() {
           <ChevronDown :size="14" />
         </div></label>
       </div>
-      <p v-if="knowledgeBaseError" class="form-error field-note">{{ knowledgeBaseError }}<button
+      <p
+        v-if="knowledgeBaseError"
+        class="form-error field-note"
+        role="alert"
+      >{{ knowledgeBaseError }}<button
         type="button"
         class="field-action"
         @click="emit('reloadKnowledgeBases')"
@@ -86,17 +90,19 @@ function submit() {
       <p
         v-else-if="!loadingKnowledgeBases && !knowledgeBases.length"
         class="form-error field-note"
+        role="alert"
       >当前账号没有可用知识库，请先在 DevAtlas 创建。</p>
-      <p v-else-if="fieldError" class="form-error field-note">{{ fieldError }}</p>
+      <p v-else-if="fieldError" class="form-error field-note" role="alert">{{ fieldError }}</p>
       <div class="form-footer">
         <span class="privacy-line"><TerminalSquare :size="14" /> 只读分析，不执行生产操作</span>
         <button
           class="primary-button"
           type="submit"
           :disabled="running"
+          :aria-busy="running"
         ><LoaderCircle v-if="running" class="spin" :size="17" /><Play v-else :size="17" />{{ running ? '分析中' : '开始分析' }}</button>
       </div>
     </form>
-    <p v-if="error" class="form-error bottom-error">{{ error }}</p>
+    <p v-if="error" class="form-error bottom-error" role="alert">{{ error }}</p>
   </section>
 </template>

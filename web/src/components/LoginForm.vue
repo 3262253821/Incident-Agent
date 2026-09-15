@@ -25,11 +25,12 @@ const password = ref('')
         required
         placeholder="输入密码"
       /></label>
-      <p v-if="error" class="form-error"><AlertTriangle :size="15" /> {{ error }}</p>
+      <p v-if="error" class="form-error" role="alert"><AlertTriangle :size="15" /> {{ error }}</p>
       <button
         class="primary-button full"
         type="submit"
         :disabled="loading"
+        :aria-busy="loading"
       ><LoaderCircle v-if="loading" class="spin" :size="17" /><ArrowRight v-else :size="17" />{{ loading ? '验证中' : '登录并进入' }}</button>
     </form>
     <div class="auth-note"><ShieldCheck :size="14" /> Token 只在当前浏览器会话中使用，不写入 Agent 数据库。</div>
