@@ -2,9 +2,9 @@
 
 > **用途**：上下文压缩、会话切换或换模型后的**第一恢复入口**。新会话读完本文即可接手，不需要回溯历史对话。
 >
-> **最后更新**：2026-09-15（**P1-5-3 前端测试与可访问性**：引入 Vitest/组件测试并把 50 条用例接进 CI，补 `:focus-visible`、`role=dialog`/ESC/焦点管理、`aria-live`、`prefers-reduced-motion`；此前 P1-5-1、P1-5-2、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成）。**本次为新会话做了一次导航一致性核对**：未完成项 14 项、后端测试基线 **381 passed** + 前端 **50 passed**、下一步 **P1-5-4**。
+> **最后更新**：2026-09-15（**交接刷新：为"我新开会话"做的一次逐项核对**；本版记录的状态在提交 `167ca03` 上核实过）。当前进度：**P1-5-3 前端测试与可访问性已完成**（引入 Vitest/组件测试并把 50 条用例接进 CI，补 `:focus-visible`、`role=dialog`/ESC/焦点管理、`aria-live`、`prefers-reduced-motion`），此前 P1-5-1、P1-5-2、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成。**核对结果**：未完成项 **14 项**、后端测试基线 **381 passed** + 前端 **50 passed**、`git rev-list --count HEAD` = **64**、工作区干净、local == origin、下一步 **P1-5-4**。
 >
-> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`b0400fe`**（P1-5-3；P1-5-2 是 `730268d`、P1-5-1 是 `39f1fe2`），其后是文档提交（勾选与完成记录、CI 结果记录、交接刷新）。**文档提交会让 HEAD 每轮往后走一两个，所以交接时的准确 HEAD 请直接跑 `git log --oneline -1`（工作区应当是干净的）**；每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
+> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`b0400fe`**（P1-5-3；P1-5-2 是 `730268d`、P1-5-1 是 `39f1fe2`），其后是文档提交 `d02610d`（勾选与完成记录）、`167ca03`（记提交号与 CI 结果）。**文档提交会让 HEAD 每轮往后走一两个，所以交接时的准确 HEAD 请直接跑 `git log --oneline -1`（工作区应当是干净的）**；每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
 >
 > **文档地图（新会话先看这张表）**：
 >
@@ -43,6 +43,8 @@
 
 ## 2. 仓库、推送与隐私
 
+**接手事实（本版核对于 `167ca03`）**：HEAD = `167ca03`｜提交数 = 64｜工作区干净、`local == origin`｜后端基线 **381 passed**、前端 **50 passed**｜清单 **已勾 34 / 未勾 14**｜**下一步 = P1-5-4**。新会话先跑 §12.1 的三条命令复核这些数字。
+
 ```text
 仓库地址（公开）: https://github.com/3262253821/Incident-Agent
 GitHub 账号     : 3262253821
@@ -73,7 +75,7 @@ GitHub 账号     : 3262253821
 
 | 指标 | 最初 | 现在 |
 | --- | --- | --- |
-| 提交数 | 0 | **70+ 个提交**（代码提交到 `b0400fe`，其后为文档提交；准确值以 `git rev-list --count HEAD` 为准） |
+| 提交数 | 0 | **64 个**（核对于 `167ca03`：代码提交到 `b0400fe`，其后是 `d02610d`/`167ca03` 两个文档提交；准确值以 `git rev-list --count HEAD` 为准） |
 | 测试用例 | 18 passed | 后端 **381 passed, 0 warnings**；前端 **50 passed**（P1-5-3 新增，vitest + jsdom） |
 | 测试文件 | 4 个（用户原有） | 后端 **31 个**（另有 `tests/conftest.py` 做代理变量隔离）；前端 **6 个 `.spec.ts`**（`web/tests/`） |
 | ruff（全仓） | 193 个错误 | **0** |
@@ -232,8 +234,12 @@ cd E:\RagKnowledgeSystem\backend; py -m uvicorn app.main:app --host 127.0.0.1 --
 # Agent（注意代理变量，见 7.2）
 cd E:\IncidentAgent; $env:PYTHONPATH="E:\IncidentAgent"; py tmp\run_agent_clean.py
 
-# 前端
+# 前端（开发服务器）
 cd E:\IncidentAgent\web; npm run dev -- --host 127.0.0.1 --port 5174
+
+# 前端验证与测试（不需要启动任何服务；P1-5-3 起 npm run test 是必跑项）
+cd E:\IncidentAgent\web; npm run test      # vitest run，jsdom，50 条
+cd E:\IncidentAgent\web; npm run build     # vue-tsc -b && vite build
 ```
 
 ### 7.2 ⚠️ 代理环境变量（新会话必读）
@@ -307,6 +313,8 @@ DevAtlas knowledge_bases: 只有 kb_id=4（owner_id=5，DevAtlas 开发演示知
 incident_agent.agent_runs: owner 1 有 4 条，owner 5 有 1 条（合计 5 条运行、30 条步骤）
 ```
 
+（这是 2026-09-15 的快照；P1-5-3 只动前端，**没有改过任何数据**，所以这段仍然有效。真要用之前先跑一次 `tmp/live_p133_mysql.py` 之类的探针确认。）
+
 ---
 
 ## 9. 已知坑与踩过的教训（新会话可直接复用）
@@ -335,6 +343,7 @@ incident_agent.agent_runs: owner 1 有 4 条，owner 5 有 1 条（合计 5 条�
     ```
     另外：`.NET` 静态调用（`[System.IO.File]::ReadAllBytes`）会把**进程的当前目录重置成 PowerShell 的启动目录**，之后所有相对路径都会指错——脚本里一律传绝对路径。用 `Get-Content` 看 UTF-8 文件也会花屏（见第 9 条），要读内容用文件工具。
 19. **反证的备份要用绝对路径、且每批实验前重新备份**（P1-5-3 踩的坑）：第一次失败的实验跑给 `tmp/p153_backup/` 留下了一份**早于最新修改**的备份，第二批实验用 `-replace` 拼出的相对路径既非绝对、文件名也不对，于是"恢复"实际上什么都没做（`Copy-Item` 报 `Cannot find path`，`$ErrorActionPreference='Stop'` 也没拦住非终止错误）。后果是 E1 的改动（把 `addEventListener` 换成注释）留在了工作区，差点被当成"已恢复"。**核对方式**：每个实验恢复后立刻比 `Get-FileHash`，并保留"恢复后逐字节一致"的输出。
+20. **P1-5-4 相关（下一步会踩的地方）**：① `apiErrorMessage()` 里 `error.code === 'ECONNABORTED'` 判的是 axios 的超时码，但**同一个错误上 `error.response` 才是 HTTP 状态**——想按状态码分流必须看 `error.response?.status` 与后端统一契约里的 `error_code`（`UNAUTHORIZED`），不要继续用文案 `includes('401')`（`IncidentWorkspaceView.submit()` 现在就是这么干的，后端改文案就会静默失效）；② `auth.restore()` 目前 **catch 一切就 `signOut()`**，加响应拦截器时小心别让"后端没起来"也清掉用户 Token；③ `web/tests/stores.spec.ts` 已经把 `restore()` 的三种分支固定下来了（有令牌且成功 / 令牌失效 / 没有令牌），**先改这组期望值再改实现**，否则看起来像"测试突然变红"；④ 401 之后仍要跳登录页——`router.beforeEach` 只检查 `localStorage` 里有没有 token。
 
 ---
 
@@ -391,4 +400,28 @@ P1-5-3 新增可写：
 
 ## 12. 给新会话的第一句话建议
 
-> 读 `docs/项目交接文档-DeepSeek.md` 和 `docs/项目补充优化.md`，用户已定顺序 **A → B → C**：A（P1-6-1 知识库下拉选择）、B（P1-4-1 补测试、P1-4-5 CI 变绿并确认）与 **C 的前三步 P1-5-1（7 个前端文件压行拆分，`39f1fe2`）、P1-5-2（前后端类型统一 + 步骤契约只有一份，`730268d`）、P1-5-3（Vitest 50 条进 CI + 键盘可达，`b0400fe`）** 都已完成推送。下一步是 **C 的第四步：P1-5-4 统一 401 处理并区分网络故障**（响应拦截器按 HTTP 状态处理 401、保留 redirect；后端不可达只提示、不强制退出；注意 `auth.restore()` 现在任何异常都清 Token），然后 P1-5-5、P1-5-6。按约定：一次一项、实现+测试+推送齐了才打勾、不跳项、不用 `git add .`，每项都要做反证并写完成记录。
+> 读 `docs/项目交接文档-DeepSeek.md` 和 `docs/项目补充优化.md`，用户已定顺序 **A → B → C**：A（P1-6-1 知识库下拉选择）、B（P1-4-1 补测试、P1-4-5 CI 变绿并确认）与 **C 的前三步 P1-5-1（7 个前端文件压行拆分，`39f1fe2`）、P1-5-2（前后端类型统一 + 步骤契约只有一份，`730268d`）、P1-5-3（Vitest 50 条进 CI + 键盘可达，`b0400fe`）** 都已完成推送（CI run `34944164842` 两个 job 全绿）。下一步是 **C 的第四步：P1-5-4 统一 401 处理并区分网络故障**（响应拦截器按 HTTP 状态处理 401、保留 redirect；后端不可达只提示、不强制退出；注意 `auth.restore()` 现在任何异常都清 Token，而 `web/tests/stores.spec.ts` 已经固定了它的三种分支——先改期望值再改实现），然后 P1-5-5、P1-5-6。按约定：一次一项、实现+测试+推送齐了才打勾、不跳项、不用 `git add .`，每项都要做反证并写完成记录。
+
+### 12.1 新会话开场建议跑的三条命令（30 秒内确认接手状态）
+
+```powershell
+cd E:\IncidentAgent; git log --oneline -5; git status --short   # 工作区应当干净
+cd E:\IncidentAgent; py -m pytest tests -q                      # 期望 381 passed
+cd E:\IncidentAgent\web; npm run test                            # 期望 6 files / 50 passed
+```
+
+三条都对得上，就说明本文档描述的状态与代码一致，可以直接从 §5.3 的 P1-5-4 开始；对不上就先按 §9 的坑逐条排查，不要直接动手改代码。
+
+### 12.2 `tmp/` 里的东西怎么用（新会话可直接改，都不提交）
+
+`tmp/` 被 `.gitignore` 挡住，是历次任务的**探针与证据**，新会话可以随意复用/删除，不影响仓库：
+
+| 类别 | 例子 | 说明 |
+| --- | --- | --- |
+| 活体验证探针 | `run_agent_clean.py`、`live_*.py`、`gh_runs.py` | 见 §8 的表；这是本项目最有价值的验证手段 |
+| P1-5-3 的反证脚本 | `p153_break.ps1`（按 `-Index` 跑单个实验）、`p153_counterexamples.ps1`（批量）、`p153_backup2/`（那一刻的备份） | **下一项做反证时照这个结构写一份新的**：逐文件备份 → 改坏 → 跑测试 → 恢复 → 比 `Get-FileHash` |
+| P1-5-3 的 SSR 探针 | `p153_probe/p153-live.spec.ts`、`p153_probe_output.txt` | 真实渲染产物里核对无障碍属性的证据 |
+| 一次性脚本与草稿 | `annotate_*.py`、`trim_checklist.py`、`probe_*.py`、`msg_*.txt`、`commit_msg_*.txt` | 都可以随时删 |
+| 数据安全网 | `backup_agent_runs_before_p042.sql`、`backup_before_degraded_summary.sql` | 改真实 MySQL 数据前留的备份 |
+
+`tmp/check_time_helpers.ts` 已**作废**（它的 14 条用例搬进了 `web/tests/time.spec.ts`），不要再往它里面加用例。
