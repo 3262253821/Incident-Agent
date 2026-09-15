@@ -962,6 +962,64 @@ textarea {
   font-size: 12px;
 }
 
+/* 筛选控件（P1-5-5）。标签文字只给读屏：视觉上「运行历史」标题已经说明了上下文。 */
+.drawer-filters {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.drawer-filters label {
+  flex: 1;
+}
+
+.drawer-filters select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #29302e;
+  background: #101413;
+  color: #c7d1cb;
+  font: 500 11px 'DM Mono', monospace;
+}
+
+/*
+ * 每行历史是一个「打开 + 重跑」的组合。用 `display: contents` 让包一层的 div
+ * 不参与布局，按钮因此仍然直接落在抽屉的网格里（P1-5-1 遗留下来的排版约束）。
+ */
+.history-row-wrap {
+  display: contents;
+}
+
+.history-rerun {
+  padding: 4px 7px;
+  border: 1px solid #29302e;
+  background: transparent;
+  color: #71807a;
+  font: 500 10px 'DM Mono', monospace;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+
+.history-rerun:hover {
+  color: #b7ff5f;
+  border-color: #b7ff5f;
+}
+
+.history-row small.history-failure {
+  color: #f0745e;
+}
+
+/* 字段级提示（P1-5-6）：紧贴控件的一条短提示，不抢整页告警的位置。 */
+.form-error.field-inline {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+/* 重跑说明（P1-5-5）：解释哪些字段没被复用，是提示不是错误。 */
+.field-note.prefill-note {
+  color: #b7ff5f;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

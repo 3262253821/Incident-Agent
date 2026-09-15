@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { AlertTriangle } from 'lucide-vue-next'
 import AppLayout from '../layouts/AppLayout.vue'
 import UserMenu from '../components/UserMenu.vue'
@@ -12,6 +12,9 @@ import StatusAnnouncer from '../components/StatusAnnouncer.vue'
 import { apiErrorMessage } from '../api/client'
 import { listKnowledgeBases } from '../api/knowledgeBases'
 import { checkHealth } from '../api/system'
+import { historyQuery } from '../utils/apiErrors'
+import type { StatusFilter, TimeRangeFilter } from '../utils/apiErrors'
+import { failureDetail } from '../utils/failingRun'
 import {
   RUN_STATUS,
   runStatusAnnouncement,
@@ -28,6 +31,13 @@ const incident = useIncidentStore()
 const apiOnline = ref(false)
 const showHistory = ref(false)
 const loadingMore = ref(false)
+/** 抽屉里的筛选条件（P1-5-5）；变化时重新拉第一页，翻页由 store 带上同一组条件。 */
+const statusFilter = ref<StatusFilter>('all')
+const timeRange = ref<TimeRangeFilter>('all')
+/** 重跑后给表单的说明：哪些字段没被复用、为什么（P1-5-5）。 */
+const prefillNotice = ref('')
+/** 重跑后把焦点送回表单第一格，否则键盘/读屏用户还停在已关闭的抽屉上。 */
+const formPanel = ref<{ $el?: HTMLElement } | null>(null)
 /** 分析状态与失败原因的读屏播报文案（P1-5-3），由 `StatusAnnouncer` 渲染。 */
 const announcement = ref('')
 
@@ -156,11 +166,54 @@ async function submit(payload: {
  */
 async function openHistory() {
   try {
-    await incident.loadHistory()
+    await loadHistory()
     showHistory.value = true
   } catch (failure) {
     incident.error = apiErrorMessage(failure)
   }
+}
+
+/** 重新拉第一页：打开抽屉、或筛选条件变化时调用。 */
+async function loadHistory() {
+  return incident.loadHistory(historyQuery(statusFilter.value, timeRange.value))
+}
+
+/** 抽屉里换了筛选档位：重查第一页（游标失效，必须从第一页开始）。 */
+async function onStatusFilterChange(value: StatusFilter) {
+  statusFilter.value = value
+  await reloadHistory()
+}
+
+async function onTimeRangeChange(value: TimeRangeFilter) {
+  timeRange.value = value
+  await reloadHistory()
+}
+
+async function reloadHistory() {
+  try {
+    await loadHistory()
+  } catch (failure) {
+    incident.error = apiErrorMessage(failure)
+  }
+}
+
+/**
+ * 用一条历史记录重跑（P1-5-5）。
+ *
+ * **只能复用摘要里真实存在的字段**：`RunSummary`/`RunResponse` 都没有原始日志
+ * （`content`）与 `top_k`——设计文档 §12.1 只要求存摘要。所以这里回填标题与知识库，
+ * 并明确告诉用户日志要重新粘贴，而不是假装"一键重跑"。
+ */
+async function rerun(run: RunSummary) {
+  showHistory.value = false
+  title.value = run.title
+  knowledgeBaseId.value = run.knowledge_base_id
+  const missing = ['日志正文', '召回数量']
+  if (run.status !== RUN_STATUS.COMPLETED) missing.push('失败原因明细')
+  prefillNotice.value = `已按「${run.title}」回填标题与知识库（#${run.knowledge_base_id}）；${missing.join('、')}不在历史记录里，请重新填写。失败细分：${failureDetail(run)}`
+  await nextTick()
+  const root = formPanel.value?.$el
+  root?.querySelector<HTMLInputElement>('input, textarea, select')?.focus()
 }
 
 async function selectRun(run: RunSummary) {
@@ -215,6 +268,7 @@ onMounted(async () => {
       </section>
       <div class="content-grid">
         <IncidentForm
+          ref="formPanel"
           v-model:title="title"
           v-model:content="content"
           v-model:knowledge-base-id="knowledgeBaseId"
@@ -224,6 +278,9 @@ onMounted(async () => {
           :knowledge-bases="knowledgeBases"
           :loading-knowledge-bases="loadingKnowledgeBases"
           :knowledge-base-error="knowledgeBaseError"
+          :field-errors="incident.fieldErrors"
+          :failure-hint="incident.failureHint"
+          :notice="prefillNotice"
           @submit="submit"
           @reload-knowledge-bases="loadKnowledgeBases"
         />
@@ -252,9 +309,14 @@ onMounted(async () => {
         :runs="incident.history"
         :has-more="Boolean(incident.nextCursor)"
         :loading-more="loadingMore"
+        :status-filter="statusFilter"
+        :time-range="timeRange"
         @close="showHistory = false"
         @select="selectRun"
         @load-more="loadMoreRuns"
+        @rerun="rerun"
+        @update:status-filter="onStatusFilterChange"
+        @update:time-range="onTimeRangeChange"
       />
     </div>
   </AppLayout>

@@ -29,6 +29,13 @@ vi.mock('../src/api/client', () => ({
   isAuthFailure: (error: unknown) =>
     [401, 403].includes((error as { response?: { status?: number } })?.response?.status ?? 0),
   onSessionExpired: vi.fn(),
+  // store 通过这两个函数把 422 的 detail 数组与失败大类读出来（P1-5-6）。
+  apiErrorPayload: (error: unknown) =>
+    (error as { response?: { data?: unknown } })?.response?.data,
+  validationErrors: (error: unknown) => {
+    const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+    return Array.isArray(detail) ? detail : []
+  },
 }))
 
 const { analyzeIncident } = await import('../src/api/incidents')
@@ -129,6 +136,73 @@ describe('incident store', () => {
     await store.loadMoreHistory()
 
     expect(listRuns).not.toHaveBeenCalled()
+  })
+
+  it('筛选后的"加载更多"带上同一组条件（否则第二页会把被筛掉的记录混回来）', async () => {
+    const store = useIncidentStore()
+    vi.mocked(listRuns).mockResolvedValue({ items: [makeRun({ run_id: 'a' })], next_cursor: 'cursor-1' } as never)
+
+    await store.loadHistory({ status: ['degraded'], started_after: '2026-09-08T12:00:00.000Z' })
+    await store.loadMoreHistory()
+
+    expect(listRuns).toHaveBeenLastCalledWith({
+      status: ['degraded'],
+      started_after: '2026-09-08T12:00:00.000Z',
+      cursor: 'cursor-1',
+    })
+  })
+
+  it('422 时把字段级提示与失败大类一起落进 state（P1-5-6）', async () => {
+    const failure = Object.assign(new Error('请求参数校验失败，请检查输入。'), {
+      response: {
+        status: 422,
+        data: {
+          detail: [
+            { loc: ['body', 'title'], msg: 'Field required', type: 'missing' },
+            { loc: ['body', 'knowledge_base_id'], msg: 'Input should be greater than 0', type: 'greater_than' },
+          ],
+          error_code: 'VALIDATION_ERROR',
+        },
+      },
+    })
+    vi.mocked(analyzeIncident).mockRejectedValue(failure)
+
+    const store = useIncidentStore()
+    await expect(
+      store.analyze({ title: '', content: 'c', knowledge_base_id: 0, top_k: 5 }),
+    ).rejects.toThrow()
+
+    expect(store.fieldErrors.fields.title).toBe('请填写故障标题')
+    expect(store.fieldErrors.fields.knowledge_base_id).toBe('知识库必须大于 0')
+    expect(store.failureHint.summary).toBe('请求参数没有通过服务端校验')
+    expect(store.failureHint.hint).toBeTruthy()
+  })
+
+  it('下一次提交会清掉上一轮的字段级提示（不会把旧错误留在表单上）', async () => {
+    vi.mocked(analyzeIncident).mockRejectedValue(
+      Object.assign(new Error('x'), {
+        response: { status: 422, data: { detail: [{ loc: ['body', 'title'], type: 'missing' }] } },
+      }),
+    )
+    const store = useIncidentStore()
+    await store.analyze({ title: '', content: 'c', knowledge_base_id: 4, top_k: 5 }).catch(() => {})
+    expect(store.fieldErrors.fields.title).toBe('请填写故障标题')
+
+    vi.mocked(analyzeIncident).mockResolvedValue({ run_id: 'run-ok', steps: [], observations: [] } as never)
+    await store.analyze({ title: 't', content: 'c', knowledge_base_id: 4, top_k: 5 })
+
+    expect(store.fieldErrors.fields).toEqual({})
+    expect(store.failureHint.summary).toBe('')
+  })
+
+  it('连不上（无 response）时给出"无法连接"而不是字段级提示', async () => {
+    vi.mocked(analyzeIncident).mockRejectedValue(new Error('无法连接 Incident Agent API。'))
+
+    const store = useIncidentStore()
+    await store.analyze({ title: 't', content: 'c', knowledge_base_id: 4, top_k: 5 }).catch(() => {})
+
+    expect(store.fieldErrors.fields).toEqual({})
+    expect(store.failureHint.summary).toBe('无法连接分析服务')
   })
 
   it('点开一条历史记录时拉详情；失败时把错误写进 state 并抛出', async () => {

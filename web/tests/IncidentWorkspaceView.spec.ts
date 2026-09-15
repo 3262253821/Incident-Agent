@@ -18,6 +18,7 @@ import { createPinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import IncidentWorkspaceView from '../src/views/IncidentWorkspaceView.vue'
+import { FAILED_STATUSES } from '../src/utils/apiErrors'
 import { useAuthStore } from '../src/stores/auth'
 import { useIncidentStore } from '../src/stores/incident'
 import { makeRun } from './helpers'
@@ -35,6 +36,12 @@ vi.mock('../src/api/client', () => ({
   isAuthFailure: (error: unknown) =>
     [401, 403].includes((error as { response?: { status?: number } })?.response?.status ?? 0),
   onSessionExpired: vi.fn(),
+  // store 通过这两个函数读 422 的 detail 数组与失败大类（P1-5-6）。
+  apiErrorPayload: (error: unknown) => (error as { response?: { data?: unknown } })?.response?.data,
+  validationErrors: (error: unknown) => {
+    const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+    return Array.isArray(detail) ? detail : []
+  },
 }))
 
 const { checkHealth } = await import('../src/api/system')
@@ -191,6 +198,116 @@ describe('IncidentWorkspaceView accessibility', () => {
 
     expect(localStorage.getItem('incident_agent_token')).toBeNull()
     expect(useAuthStore(pinia).token).toBe('')
+
+    wrapper.unmount()
+  })
+})
+
+/**
+ * P1-5-5 新增：抽屉筛选、重跑回填、失败细分提示。
+ *
+ * 这些行为的"接线"只能在视图层验证——抽屉只负责发出事件，真正改查询参数、
+ * 回填表单、把说明传给表单的都是这里。
+ */
+describe('IncidentWorkspaceView 历史筛选与重跑（P1-5-5）', () => {
+  async function openDrawer(wrapper: Awaited<ReturnType<typeof mountWorkspace>>) {
+    const trigger = wrapper.get('.rail-nav button[aria-label="运行历史"]')
+    ;(trigger.element as HTMLElement).focus()
+    await trigger.trigger('click')
+    await flushPromises()
+    return wrapper.get('[role="dialog"]')
+  }
+
+  it('打开抽屉先按"不限筛选"拉第一页（不带 status / started_after）', async () => {
+    const wrapper = await mountWorkspace()
+    await openDrawer(wrapper)
+
+    expect(listRuns).toHaveBeenCalledWith({})
+
+    wrapper.unmount()
+  })
+
+  it('切换状态筛选会带着五个失败状态重查第一页（游标不能复用）', async () => {
+    vi.mocked(listRuns).mockResolvedValue({ items: [makeRun()], next_cursor: 'cursor-1' } as never)
+    const wrapper = await mountWorkspace()
+    const dialog = await openDrawer(wrapper)
+
+    await dialog.findAll('select')[0].setValue('failed')
+    await flushPromises()
+
+    expect(listRuns).toHaveBeenLastCalledWith({ status: FAILED_STATUSES })
+
+    wrapper.unmount()
+  })
+
+  it('切换时间范围会带上 started_after（ISO 8601），并且不再带游标', async () => {
+    vi.mocked(listRuns).mockResolvedValue({ items: [makeRun()], next_cursor: 'cursor-1' } as never)
+    const wrapper = await mountWorkspace()
+    const dialog = await openDrawer(wrapper)
+
+    await dialog.findAll('select')[1].setValue('24h')
+    await flushPromises()
+
+    const params = vi.mocked(listRuns).mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(params.cursor).toBeUndefined()
+    expect(String(params.started_after)).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+
+    wrapper.unmount()
+  })
+
+  it('点「重跑」回填标题与知识库、关掉抽屉，并说明哪些字段没能复用', async () => {
+    const run = makeRun({ run_id: 'rerun-me', title: '网关 502 复盘', knowledge_base_id: 7, status: 'degraded' })
+    vi.mocked(listRuns).mockResolvedValue({ items: [run], next_cursor: null } as never)
+    const wrapper = await mountWorkspace()
+    const dialog = await openDrawer(wrapper)
+
+    await dialog.get('.history-rerun').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect((wrapper.get('input[type="text"], .incident-form input').element as HTMLInputElement).value).toBe(
+      '网关 502 复盘',
+    )
+    const notice = wrapper.get('.prefill-note').text()
+    expect(notice).toContain('网关 502 复盘')
+    expect(notice).toContain('#7')
+    // 契约里没有原始日志与 top_k，必须如实说明而不是假装一键重跑。
+    expect(notice).toContain('日志正文')
+    expect(notice).toContain('不在历史记录里')
+    // 焦点回到表单第一格，键盘用户不会停在已关闭的抽屉上。
+    expect(document.activeElement?.tagName).toBe('INPUT')
+
+    wrapper.unmount()
+  })
+
+  it('成功记录的重跑说明里不出现"失败原因明细"', async () => {
+    vi.mocked(listRuns).mockResolvedValue({
+      items: [makeRun({ run_id: 'ok', status: 'completed' })],
+      next_cursor: null,
+    } as never)
+    const wrapper = await mountWorkspace()
+    const dialog = await openDrawer(wrapper)
+
+    await dialog.get('.history-rerun').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.prefill-note').text()).not.toContain('失败原因明细')
+
+    wrapper.unmount()
+  })
+
+  it('失败大类建议显示在底部告警区（P1-5-6）', async () => {
+    vi.mocked(currentUser).mockResolvedValue({ username: 'devatlas-demo' } as never)
+    vi.mocked(listKnowledgeBases).mockResolvedValue([] as never)
+    const wrapper = await mountWorkspace()
+    const incident = incidentStore()
+    incident.error = '依赖服务暂不可用，请稍后重试'
+    incident.failureHint = { summary: '依赖服务暂时不可用', hint: '通常是 DevAtlas（鉴权 / 检索）没起来，稍后重试即可。' }
+    await flushPromises()
+
+    const bottom = wrapper.get('.bottom-error').text()
+    expect(bottom).toContain('依赖服务暂不可用')
+    expect(bottom).toContain('DevAtlas')
 
     wrapper.unmount()
   })
