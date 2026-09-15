@@ -105,3 +105,87 @@ describe('AppLayout 的触发按钮', () => {
     expect(wrapper.emitted('history')).toHaveLength(1)
   })
 })
+
+/**
+ * P1-5-6 新增：422 的字段级提示贴在对应控件上，失败大类建议在底部。
+ *
+ * 原来的行为：`apiErrorMessage()` 把数组型 `detail` 压成一句"请求参数校验失败，
+ * 请检查输入。"，字段信息全丢——用户只知道自己填错了，不知道哪一格错了。
+ */
+describe('IncidentForm 字段级错误提示（P1-5-6）', () => {
+  it('422 的字段错误显示在各自控件下方，而不是只给一句整句', () => {
+    const wrapper = mountForm({
+      fieldErrors: {
+        fields: {
+          title: '故障标题不能为空',
+          content: '请填写日志 / 现象',
+          top_k: '召回数量取值不合法',
+        },
+        general: '',
+      },
+    })
+
+    const inline = wrapper.findAll('.field-inline')
+    expect(inline.map((node) => node.text())).toEqual([
+      '故障标题不能为空',
+      '请填写日志 / 现象',
+      '召回数量取值不合法',
+    ])
+    // 每条都必须是 role=alert，否则读屏不会主动播报。
+    expect(inline.every((node) => node.attributes('role') === 'alert')).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('知识库字段的错误走下拉下面那一行（与本地校验同一个位置）', () => {
+    const wrapper = mountForm({
+      fieldErrors: { fields: { knowledge_base_id: '知识库必须大于 0' }, general: '' },
+    })
+
+    expect(wrapper.get('.field-note').text()).toContain('知识库必须大于 0')
+
+    wrapper.unmount()
+  })
+
+  it('本地校验（没选知识库）优先于服务端的同字段提示，避免两句互相矛盾', async () => {
+    const wrapper = mountForm({
+      knowledgeBaseId: null,
+      fieldErrors: { fields: { knowledge_base_id: '知识库必须大于 0' }, general: '' },
+    })
+
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.get('.field-note').text()).toBe('请先选择要检索的知识库')
+
+    wrapper.unmount()
+  })
+
+  it('定位不到字段的错误仍然以 role=alert 显示（不静默丢失）', () => {
+    const wrapper = mountForm({ fieldErrors: { fields: {}, general: '请求参数校验失败，请检查输入。' } })
+    expect(wrapper.get('.field-note').text()).toBe('请求参数校验失败，请检查输入。')
+    wrapper.unmount()
+  })
+
+  it('失败大类建议跟着整句错误一起显示在底部告警区', () => {
+    const wrapper = mountForm({
+      error: '无法连接 Incident Agent API。',
+      failureHint: { summary: '无法连接分析服务', hint: '确认 Agent 服务已启动后重试；你的登录状态不会被清除。' },
+    })
+
+    const bottom = wrapper.get('.bottom-error')
+    expect(bottom.text()).toContain('无法连接 Incident Agent API。')
+    expect(bottom.text()).toContain('你的登录状态不会被清除')
+
+    wrapper.unmount()
+  })
+
+  it('重跑说明是一句提示（不是错误），并且不占 role=alert', () => {
+    const wrapper = mountForm({ notice: '已按「网关 502 复盘」回填标题与知识库（#7）；日志正文不在历史记录里。' })
+
+    const notice = wrapper.get('.prefill-note')
+    expect(notice.text()).toContain('日志正文')
+    expect(notice.attributes('role')).toBeUndefined()
+
+    wrapper.unmount()
+  })
+})

@@ -50,6 +50,33 @@ export interface ApiErrorPayload {
 }
 
 /**
+ * 422 响应里 `detail` 的一项（FastAPI/Pydantic 的错误项）。
+ *
+ * `loc` 是字段路径（如 `['body', 'title']`），`type` 是机器可读的错误种类
+ * （`missing` / `string_too_short` / `greater_than` …），`msg` 是英文原文。
+ * 面向用户的文案由 `utils/apiErrors.ts` 按 `loc` 映射，不直接展示 `msg`。
+ */
+export interface ValidationErrorItem {
+  loc?: unknown[]
+  msg?: string
+  type?: string
+  /** Pydantic v2 会带上出错的输入值；仅用于诊断，不展示。 */
+  input?: unknown
+}
+
+/** 从任意异常里取出后端统一错误响应体（拿不到就是 `undefined`）。 */
+export function apiErrorPayload(error: unknown): ApiErrorPayload | undefined {
+  if (!axios.isAxiosError(error)) return undefined
+  return error.response?.data as ApiErrorPayload | undefined
+}
+
+/** 422 的字段错误数组；不是 422 或形状不对时返回空数组。 */
+export function validationErrors(error: unknown): ValidationErrorItem[] {
+  const detail = apiErrorPayload(error)?.detail
+  return Array.isArray(detail) ? (detail as ValidationErrorItem[]) : []
+}
+
+/**
  * 会话失效处理函数：清掉本地会话并带 `redirect` 跳登录页。
  *
  * 由 `src/main.ts` 在启动时注册。这里不 import router / store 是**有意的**：
