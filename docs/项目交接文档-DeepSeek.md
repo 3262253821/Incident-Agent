@@ -4,7 +4,18 @@
 >
 > **最后更新**：2026-09-15（P1-3 整组完成 + P1-6-1 知识库下拉 + P1-4-1 补齐设计文档要求的测试）
 >
-> **提交锚点**：上一轮代码提交范围 `f5af0d7` … `d0d711f`（`d0d711f` = P1-3-4）；本轮新增 **P1-6-1**（知识库下拉选择 + Agent 只读代理端点）与 **P1-4-1**（补测试 + 章节记账），提交号见 `docs/项目补充优化.md` 第 12.6 节。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
+> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`8eea1fb`**（P1-4-5 收尾），其后只有文档提交（含对 `docs/项目补充优化.md` 的一次结构整理）。每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
+>
+> **文档地图（新会话先看这张表）**：
+>
+> | 文档 | 作用 |
+> | --- | --- |
+> | `docs/项目交接文档-DeepSeek.md`（本文） | 恢复入口：背景、进度、环境、活体验证做法、已知坑、下一步。**只做导航，不写完成记录** |
+> | `docs/项目补充优化.md` | **唯一的任务来源**：勾选表 + 完成记录 + 执行顺序；当前状态在第二节（2.1 看板 / 2.2 未完成项 / 2.3 勾选审计） |
+> | `docs/测试对照-设计文档章节.md` | 测试 ↔ `docs/agent-mvp设计.md` 章节对照（含"测不了"的边界） |
+> | `docs/agent-mvp设计.md` | 设计文档（§17 测试设计、§16 安全策略等，是所有测试的验收依据） |
+>
+> **下一步要做什么**：用户已定顺序 A → B → C，A、B 都已完成推送；**当前 = C 的第一步 P1-5-1**（拆分多语句单行代码，主要动 `web/src/styles.css`（59 行里有 2950 字符的长行）与 `web/src/components/IncidentForm.vue`），之后 P1-5-2 ~ P1-5-6。未完成项与各自的缺口见 `docs/项目补充优化.md` 2.2 节。
 >
 > **项目根目录**：`E:\IncidentAgent`｜**关联项目**：`E:\RagKnowledgeSystem`（DevAtlas）
 >
@@ -62,7 +73,7 @@ GitHub 账号     : 3262253821
 
 | 指标 | 最初 | 现在 |
 | --- | --- | --- |
-| 提交数 | 0 | **52 个提交**（`f5af0d7` … `d0d711f` + P1-6-1 + P1-4-1 + P1-4-5，另有若干文档提交） |
+| 提交数 | 0 | **53 个提交**（`f5af0d7` … `8eea1fb` 为代码，其后为文档提交） |
 | 测试用例 | 18 passed | **366 passed, 0 warnings** |
 | 测试文件 | 4 个（用户原有） | **29 个**（另有 `tests/conftest.py` 做代理变量隔离） |
 | ruff（全仓） | 193 个错误 | **0** |
@@ -124,7 +135,7 @@ GitHub 账号     : 3262253821
 
 ### 5.2 清单外但仍然欠着的（按"影响用户"排序）
 
-1. **~~知识库下拉选择~~ → 已完成，编号 P1-6-1（见第 4 节与 `docs/项目补充优化.md` 第 12.6 节）。** 前端不再写死 `knowledgeBaseId = ref(3)`：登录后 `GET /api/v1/knowledge-bases` 自动加载可选知识库并默认选中第一项（`devatlas-demo` 只有 ID **4** 那一个库，实测返回 `[{"id":4,...}]`）。
+1. **~~知识库下拉选择~~ → 已完成，编号 P1-6-1（见第 4 节与 `docs/项目补充优化.md` 第 3.3 节）。** 前端不再写死 `knowledgeBaseId = ref(3)`：登录后 `GET /api/v1/knowledge-bases` 自动加载可选知识库并默认选中第一项（`devatlas-demo` 只有 ID **4** 那一个库，实测返回 `[{"id":4,...}]`）。
 2. **真实端到端从未跑通**：已做过的活体验证覆盖真实 MySQL、真实 DevAtlas 鉴权、真实 HTTP、真实过期 JWT、真实 MySQL 删除（savepoint 回滚），但**分析与检索本身是打桩的**——真实 DeepSeek 模型返回 + 真实 `/search` 检索这条链路一次都没跑过。
 3. **~~GitHub Actions 结果未确认~~ → 已解决（2026-09-15，P1-4-5）**：run `34930276951` 两个 job 全绿。之前"API 一直 403"的真正原因是查询走了开发机代理（Clash 共享出口 IP，匿名配额用尽）；用 `httpx.Client(trust_env=False)` 直连 `api.github.com` 就能读 run/job/step。
 4. **前端零自动化测试**：目前只有 `vue-tsc` + `vite build`，外加用 Node 直跑时间工具的手工验证（见 7.4）；界面实际长什么样没有自动手段。
@@ -172,11 +183,18 @@ GitHub 账号     : 3262253821
 
 7. 推送；若失败先查梯子，再重试；推送后核对 local == origin
    —— 之后再补一个"docs: record the <编号> commit hash"的小提交（本项目的惯例）
+
+8. 推送后读一次真实 CI 结果（两个 job 都要绿）——别用徽章等缓存，直接查 API：
+     py tmp\gh_runs.py                 # httpx.Client(trust_env=False) 直连 api.github.com
+   —— 后端 job 会跑 ruff / pytest / compileall / alembic heads，前端 job 会跑
+      npm ci + npm run build；它同时是"干净环境可跑"的唯一证明。
+   —— 碰过 .github/workflows/ci.yml 时必须先本地解析一次 YAML，否则会得到
+      一个 0 job 的失败运行（tests/test_ci_workflow.py 也会拦住这种情况）。
 ```
 
 ### 一条反复验证过的经验
 
-**写测试 ≠ 功能完整。** 本项目已经出现两次"测试全绿但功能有缺口"：降级摘要只存在响应里没入库、列表接口 N+1 与体积膨胀。两者都是**把服务真启动起来、打真实 HTTP、看真实序列化输出/真实 SQL** 才发现的。因此对"当次响应 / 历史回查""真实方言行为"这类问题，务必做一次活体验证（方法见第 8 节）。
+**写测试 ≠ 功能完整；本地通过只证明本地。** 本项目已经出现三次"本地全绿但真实环境有问题"：降级摘要只存在响应里没入库、列表接口 N+1 与体积膨胀、**CI 从挂上那天起一直红**（无 `.env` 时测试在收集阶段就失败）。三次都是**把真实环境跑起来看真实输出**才发现的。因此对"当次响应 / 历史回查""真实方言行为""干净环境能否跑"这类问题，务必做一次活体验证（方法见第 8 节与第 9 节第 10–13 条）。
 
 ---
 
@@ -233,7 +251,7 @@ Node 22 支持类型擦除，可以直接执行 TS 工具函数：
 cd E:\IncidentAgent; node --experimental-strip-types tmp\check_time_helpers.ts
 ```
 
-（`tmp/check_time_helpers.ts` 已验证 `web/src/utils/time.ts` 的 14 条用例。P1-5-3 引入 Vitest 后应改为正式测试。）
+（`tmp/check_time_helpers.ts` 已验证 `web/src/utils/time.ts` 的 14 条用例。P1-5-3 引入 Vitest 后应改为正式测试。）前端目前真正**自动化**的部分只有 `vue-tsc` 类型检查 + `vite build`，而这两步现在也由 CI 的前端 job（Ubuntu + Node 22 + `npm ci`）真实跑过一遍（见第 6 节第 8 步）；界面行为本身仍无自动手段。
 
 ---
 
@@ -250,9 +268,10 @@ cd E:\IncidentAgent; node --experimental-strip-types tmp\check_time_helpers.ts
 | `tmp/live_p134_expired_token.py` | 真实过期 JWT 链路 |
 | `tmp/measure_n_plus_one.py` | 用 SQLAlchemy 事件统计语句数（N+1 证据） |
 | `tmp/live_kb_catalog.py` | 真实登录后打 `GET /api/v1/knowledge-bases`，并与 DevAtlas 直连结果逐字段对比（P1-6-1） |
+| `tmp/gh_runs.py` | `trust_env=False` 直连 GitHub API，读 CI 的 run/job/step 真实结论（P1-4-5） |
 | `tmp/backup_agent_runs_before_p042.sql`、`tmp/backup_before_degraded_summary.sql` | 改数据前留的 MySQL 备份（当时的安全网） |
 
-> `tmp/` 里还有一堆 `*_backup.py` 是各次反证前的文件备份，以及 `commit_msg_*.txt` 是提交信息草稿——都可以随时删，不影响任何东西。
+> `tmp/` 里还有一堆 `*_backup.py` 是各次反证前的文件备份，`commit_msg_*.txt` / `msg_*.txt` 是提交信息草稿，`annotate_*.py`、`trim_checklist.py`、`probe_*.py` 是一次性脚本——都可以随时删，不影响任何东西。
 
 要点：
 
