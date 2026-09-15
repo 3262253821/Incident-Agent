@@ -1139,6 +1139,18 @@ duration_ms = completed_at - started_at，仅在以下情况返回 null：
 
 前端对应关系：抽屉只渲染 summary（标题、状态、相对时间、耗时、计数）；点击某一条时调用详情接口加载完整轨迹（`web/src/api/runs.ts`）。
 
+### 13.3.2 历史分页、过滤与保留策略（已实现，P1-3-3）
+
+```text
+GET /api/v1/runs?limit=&status=&started_after=&started_before=&cursor=
+  → {"items": [RunSummary...], "next_cursor": "<opaque>" | null}
+```
+
+- **游标分页而不是 offset**：历史是不断新增的列表，`offset` 在"翻页期间新增一条记录"时会让后续页重复或漏行。游标编码上一页最后一行的 `(started_at, id)`，下一页用行值比较 `(started_at, id) < (cursor.started_at, cursor.id)` 取严格更旧的一段，排序始终是 `started_at DESC, id DESC`。游标对客户端不透明（base64url），损坏时返回 `400` 而不是 500。
+- **每页一条 SQL**：查询一次取 `limit + 1` 行，多出来的那行就是"还有下一页"的证据，因此不需要 `COUNT(*)` 总数查询，响应里也没有 `total`。
+- **过滤**：`status` 可重复（对已知状态做白名单校验，未知状态 `422`），时间范围是 `started_after` 为 `>=`、`started_before` 为 `<` 的半开区间；aware 输入换算成 UTC，naive 输入按 UTC 解释（与存储口径一致）。所有过滤都在 `owner_user_id` 之内，游标也不携带 owner——它只是坐标，不是权限。
+- **保留策略**：`INCIDENT_RUN_RETENTION_DAYS`（默认 `0` = 不删除）。大于 0 时在服务启动时按 `started_at` 删除超期记录，先删 `agent_steps` 再删 `agent_runs`（SQLite 默认不开外键级联，只删主表会留下孤儿步骤），删除条数与保留天数写入启动日志作为审计。先回收中断记录、再执行保留策略，保证一条过期但仍是 `running` 的记录先变成可解释的终止状态。
+
 ### 13.4 Web UI 与 SSE
 
 第一版 Web UI 使用同步 JSON 也可以先跑通，但 Web Harness 的目标接口为：

@@ -31,6 +31,8 @@ class Settings:
     model_max_tokens: int | None = None
     model_max_retries: int = 0
     report_model: str = "deepseek-chat"
+    # 历史保留期（P1-3-3）：0 表示不删除，默认保护演示数据。
+    run_retention_days: int = 0
 
 
 def _required_env(name: str) -> str:
@@ -111,6 +113,11 @@ def load_settings() -> Settings:
             "INCIDENT_AGENT_REPORT_MODEL",
             os.getenv("INCIDENT_AGENT_MODEL", "deepseek-chat"),
         ),
+        # 历史保留天数：0（默认）表示不删除任何记录。
+        run_retention_days=_optional_int(
+            os.getenv("INCIDENT_RUN_RETENTION_DAYS", "0"),
+        )
+        or 0,
     )
 
 

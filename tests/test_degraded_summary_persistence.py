@@ -246,8 +246,9 @@ def test_history_endpoint_returns_the_persisted_summary(monkeypatch):
     assert listed.status_code == 200
     assert detail.status_code == 200
 
-    # 列表自 P1-3-1 起只返回摘要，完整降级摘要必须仍然能从详情接口读回来。
-    summary = listed.json()[0]
+    # 列表自 P1-3-1 起只返回摘要（P1-3-3 起包在分页信封里），
+    # 完整降级摘要必须仍然能从详情接口读回来。
+    summary = listed.json()["items"][0]
     assert summary["run_id"] == run_id
     assert summary["status"] == RunStatus.DEGRADED
     assert summary["observations_count"] >= 1

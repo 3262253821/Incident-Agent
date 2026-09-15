@@ -521,7 +521,7 @@ def test_runs_endpoint_does_not_return_raw_credentials(monkeypatch):
 
     assert_no_raw_secrets(response.json())
     assert_no_raw_secrets(history.json())
-    assert history.json(), "历史接口应返回刚创建的 run"
+    assert history.json()["items"], "历史接口应返回刚创建的 run"
 
     # 数据库里存的必须是脱敏文本：凭据没了，取证需要的信号还在。
     with Session() as db:

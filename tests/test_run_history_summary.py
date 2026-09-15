@@ -29,7 +29,10 @@ from app.incident_agent.schemas.incident import (
     iso_utc,
     summarize_error,
 )
-from app.incident_agent.services.storage import build_run_summary_statement
+from app.incident_agent.services.storage import (
+    RunHistoryFilter,
+    build_run_summary_statement,
+)
 from app.main import app
 
 
@@ -162,7 +165,11 @@ def test_list_returns_only_the_summary_fields(client, session_factory):
     response = client.get("/api/v1/runs")
 
     assert response.status_code == 200
-    payload = response.json()
+    page = response.json()
+    # 列表是分页信封（P1-3-3）：一行数据都不能藏在 items 之外。
+    assert set(page) == {"items", "next_cursor"}
+    assert page["next_cursor"] is None
+    payload = page["items"]
     assert len(payload) == 1
     item = payload[0]
 
@@ -192,15 +199,13 @@ def test_summary_sql_never_selects_the_json_payloads():
     sqlite_sql = str(
         build_run_summary_statement(
             dialect_name="sqlite",
-            owner_user_id=1,
-            limit=20,
+            filters=RunHistoryFilter(owner_user_id=1, limit=20),
         ).compile(dialect=sqlite.dialect())
     )
     mysql_sql = str(
         build_run_summary_statement(
             dialect_name="mysql",
-            owner_user_id=1,
-            limit=20,
+            filters=RunHistoryFilter(owner_user_id=1, limit=20),
         ).compile(dialect=mysql.dialect())
     )
 
@@ -240,7 +245,7 @@ def test_list_query_count_does_not_grow_with_the_number_of_runs(
     five_run_queries = counter.count
 
     assert response.status_code == 200
-    assert len(response.json()) == 5
+    assert len(response.json()["items"]) == 5
     assert one_run_queries == 1
     assert five_run_queries == one_run_queries
 
@@ -335,7 +340,7 @@ def test_long_error_is_truncated_in_the_list_and_full_in_the_detail(
     with session_factory() as db:
         add_run(db, run_id="run-long-error", status="degraded", error=long_error)
 
-    listed = client.get("/api/v1/runs").json()[0]
+    listed = client.get("/api/v1/runs").json()["items"][0]
     detail = client.get("/api/v1/runs/run-long-error").json()
 
     assert len(listed["error"]) <= ERROR_SUMMARY_MAX_LENGTH
@@ -381,7 +386,7 @@ def test_list_only_returns_runs_of_the_authenticated_owner(
         add_run(db, run_id="run-mine", owner_user_id=1)
         add_run(db, run_id="run-someone-else", owner_user_id=2)
 
-    listed = client.get("/api/v1/runs").json()
+    listed = client.get("/api/v1/runs").json()["items"]
     assert [item["run_id"] for item in listed] == ["run-mine"]
 
     # 猜中别人的 run_id 也只能得到 404。
@@ -403,6 +408,6 @@ def test_runs_with_the_same_timestamp_still_have_a_stable_order(
         add_run(db, run_id="run-first", started_at=same_moment)
         add_run(db, run_id="run-second", started_at=same_moment)
 
-    listed = client.get("/api/v1/runs").json()
+    listed = client.get("/api/v1/runs").json()["items"]
 
     assert [item["run_id"] for item in listed] == ["run-second", "run-first"]

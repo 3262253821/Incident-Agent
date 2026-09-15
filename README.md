@@ -140,12 +140,33 @@ GET  /api/v1/runs/{run_id}
 
 | 接口 | 返回 | 说明 |
 | --- | --- | --- |
-| `GET /api/v1/runs` | `RunSummary` 列表 | 只返回身份（`title`/`run_id`）、状态、计数、`started_at`/`completed_at`/`duration_ms` 与错误摘要；一次查询，不带 `observations` / `steps` / `report` |
+| `GET /api/v1/runs` | 一页 `RunSummary` | 只返回身份（`title`/`run_id`）、状态、计数、`started_at`/`completed_at`/`duration_ms` 与错误摘要；一次查询，不带 `observations` / `steps` / `report` |
 | `GET /api/v1/runs/{run_id}` | `RunResponse` | 同一套时间字段 + 完整轨迹（`observations`、`steps`、`report`、`degraded_summary`），steps 用一次批量查询预加载 |
 
 时间一律是带 `+00:00` 的 ISO 8601（存储是 naive UTC，偏移在 API 边界补上）；`duration_ms` 由服务端派生，**未结束或被中断回收的运行是 `null`**——被回收的记录里 `completed_at` 是下一次启动发现它的时刻，拿它算耗时等于把进程宕机时长当成分析耗时。前端据此显示"3 分钟前 · 耗时 8.4s"。
 
-因此前端打开历史抽屉时先拉列表，点开某一条时再拉详情。两个接口都按 `owner_user_id` 过滤，猜中别人的 `run_id` 只会得到 404。
+列表接口的查询参数（都作用在 `owner_user_id` 之内）：
+
+```text
+limit           1..100，默认 20
+status          可重复：?status=degraded&status=max_iterations（未知状态返回 422）
+started_after   包含边界（>=），ISO 8601；naive 输入按 UTC 解释
+started_before  不含边界（<），ISO 8601
+cursor          上一页返回的 next_cursor（不透明 token）
+```
+
+分页用**游标**而不是 offset：历史是不断新增的列表，用 offset 时"翻页期间新增一条记录"会让后续页重复或漏行；游标编码上一页最后一行的 `(started_at, id)`，下一页严格取更旧的那一段。响应形如 `{"items": [...], "next_cursor": "..."}`，`next_cursor` 为 `null` 表示到底。游标损坏返回 `400`，不会 500。
+
+历史保留策略（默认关闭）：
+
+```text
+INCIDENT_RUN_RETENTION_DAYS=0    # 0 = 永不删除（默认，保护演示数据）
+INCIDENT_RUN_RETENTION_DAYS=90   # 启动时删除 started_at 早于 90 天前的 run 及其 steps
+```
+
+判定依据是 `started_at`（而不是 `completed_at`），保留期是全局运维策略、不按用户区分；删除条数与保留天数会写进启动日志，作为删除操作的审计记录。
+
+因此前端打开历史抽屉时先拉列表（点"加载更多"续拉下一页），点开某一条时再拉详情。两个接口都按 `owner_user_id` 过滤，猜中别人的 `run_id` 只会得到 404。
 
 ## 验证
 

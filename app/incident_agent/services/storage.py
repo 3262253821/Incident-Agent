@@ -2,18 +2,39 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, literal, select, tuple_, update
 from sqlalchemy.orm import Session, selectinload
 
+from ..core.pagination import encode_cursor
 from ..core.statuses import RunStatus
 from ..models import AgentRun, AgentStep
 from ..models.agent_run import utc_now
 
 # 一条 running 记录超过这个时长仍停留在 running，就认为执行它的进程已经中断。
 STALE_RUN_AFTER = timedelta(minutes=15)
+
+
+@dataclass(frozen=True)
+class RunHistoryFilter:
+    """One history query: owner scope, filters and the pagination window.
+
+    Keeping this in one object means the owner condition can never be forgotten
+    by a caller that adds a filter: every code path builds the statement from
+    ``owner_user_id`` plus optional narrowing.
+    """
+
+    owner_user_id: int
+    limit: int = 20
+    statuses: tuple[str, ...] = ()
+    # 半开区间语义：started_after 是 >=，started_before 是 <。
+    started_after: datetime | None = None
+    started_before: datetime | None = None
+    # 上一页最后一行的 (started_at, id)，用于 keyset 分页。
+    cursor: tuple[datetime, int] | None = None
 
 
 def create_run(
@@ -181,13 +202,15 @@ def _observations_count_expression(dialect_name: str):
 def build_run_summary_statement(
     *,
     dialect_name: str,
-    owner_user_id: int,
-    limit: int,
+    filters: RunHistoryFilter,
 ):
-    """Build the single summary query for one owner.
+    """Build the single summary query for one owner plus optional filters.
 
     Split out from ``list_run_summaries_for_owner`` so the dialect-dependent JSON
     count can be compiled and asserted without a live database connection.
+
+    ``limit`` is the caller's page size **plus one**: the extra row is what tells
+    us whether another page exists, without a second ``COUNT(*)`` query.
     """
 
     step_counts = (
@@ -199,8 +222,9 @@ def build_run_summary_statement(
         .subquery()
     )
 
-    return (
+    statement = (
         select(
+            AgentRun.id.label("row_id"),
             AgentRun.run_id,
             AgentRun.title,
             AgentRun.status,
@@ -218,23 +242,39 @@ def build_run_summary_statement(
             func.coalesce(step_counts.c.steps_count, 0).label("steps_count"),
         )
         .outerjoin(step_counts, step_counts.c.run_id == AgentRun.id)
-        .where(AgentRun.owner_user_id == owner_user_id)
+        .where(AgentRun.owner_user_id == filters.owner_user_id)
         # ``id`` breaks ties: two runs created in the same microsecond must still
-        # come back in a stable order, otherwise paging later would repeat rows.
+        # come back in a stable order, otherwise keyset paging would repeat rows.
         .order_by(AgentRun.started_at.desc(), AgentRun.id.desc())
-        .limit(limit)
+        .limit(filters.limit + 1)
     )
+
+    if filters.statuses:
+        statement = statement.where(AgentRun.status.in_(filters.statuses))
+    if filters.started_after is not None:
+        statement = statement.where(AgentRun.started_at >= filters.started_after)
+    if filters.started_before is not None:
+        statement = statement.where(AgentRun.started_at < filters.started_before)
+    if filters.cursor is not None:
+        cursor_started_at, cursor_id = filters.cursor
+        # 行值比较（MySQL 与 SQLite 都支持）与 order_by 的键完全一致，
+        # 因此"下一页"就是严格更旧的那一段，不需要 offset。
+        statement = statement.where(
+            tuple_(AgentRun.started_at, AgentRun.id)
+            < tuple_(literal(cursor_started_at), literal(cursor_id))
+        )
+
+    return statement
 
 
 def list_run_summaries_for_owner(
     db: Session,
     *,
-    owner_user_id: int,
-    limit: int = 20,
-) -> list[dict[str, Any]]:
-    """List recent runs as flat summary rows, using one query for any N.
+    filters: RunHistoryFilter,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Return one page of summary rows plus the cursor for the next page.
 
-    Two measured costs are removed here:
+    Two measured costs are removed here (P1-3-1):
 
     - the list used to return ``AgentRun`` entities and the caller then read
       ``run.steps`` per row, which lazy-loaded one extra statement per run (the
@@ -245,14 +285,25 @@ def list_run_summaries_for_owner(
 
     The step count is aggregated in a subquery and both counts stay in SQL, so no
     JSON column travels to the application for this endpoint.
+
+    Paging is keyset based: the returned cursor is derived from the last row of
+    this page, and only that. An empty page returns ``None``, which is also the
+    signal that the client has reached the end.
     """
 
     statement = build_run_summary_statement(
         dialect_name=db.get_bind().dialect.name,
-        owner_user_id=owner_user_id,
-        limit=limit,
+        filters=filters,
     )
-    return [dict(row) for row in db.execute(statement).mappings()]
+    rows = [dict(row) for row in db.execute(statement).mappings()]
+
+    has_more = len(rows) > filters.limit
+    page = rows[: filters.limit]
+    if not has_more or not page:
+        return page, None
+
+    last = page[-1]
+    return page, encode_cursor(last["started_at"], last["row_id"])
 
 
 def reclaim_stale_runs(
@@ -308,3 +359,54 @@ def reclaim_stale_runs(
     )
     db.commit()
     return len(stale_ids)
+
+
+def purge_expired_runs(
+    db: Session,
+    *,
+    retention_days: int,
+    now: datetime | None = None,
+) -> int:
+    """Delete runs older than the retention window and return how many.
+
+    保留策略（设计文档要求"明确历史保留期限、删除和审计策略"）：
+
+    - ``retention_days <= 0`` 表示**不删除**，这是默认值：演示环境里的历史记录
+      本身就是材料，不能因为默认配置就消失；
+    - 判定依据是 ``started_at``（不是 ``completed_at``）：一条跑了很久或没跑完的
+      记录也必须有确定的过期时刻；
+    - 保留期是**全局策略**，不按 owner 区分——它是运维口径的数据治理，不是用户
+      可见的设置；
+    - 删除时先删 ``agent_steps`` 再删 ``agent_runs``：MySQL 有外键级联，但 SQLite
+      默认不开 ``PRAGMA foreign_keys``，只删主表会留下孤儿步骤；
+    - 审计方式：调用方（服务启动时的 lifespan）记录删除条数与 cutoff，见
+      ``app/main.py``。
+
+    ``started_at < cutoff``（严格小于）表示 cutoff 当刻的记录仍然保留。
+    """
+
+    if retention_days <= 0:
+        return 0
+
+    current = now or datetime.now(UTC).replace(tzinfo=None)
+    cutoff = current - timedelta(days=retention_days)
+
+    # 先把主键取出来再删：MySQL 不允许在删除 agent_runs 的子查询里再读同一张表。
+    expired_ids = list(
+        db.scalars(select(AgentRun.id).where(AgentRun.started_at < cutoff))
+    )
+    if not expired_ids:
+        return 0
+
+    db.execute(
+        delete(AgentStep)
+        .where(AgentStep.run_id.in_(expired_ids))
+        .execution_options(synchronize_session=False)
+    )
+    db.execute(
+        delete(AgentRun)
+        .where(AgentRun.id.in_(expired_ids))
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    return len(expired_ids)

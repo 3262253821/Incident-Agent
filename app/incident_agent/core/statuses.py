@@ -32,6 +32,19 @@ class RunStatus:
     REPORT_VALIDATION_FAILED = "report_validation_failed"
     MAX_ITERATIONS = "max_iterations"
 
+    @classmethod
+    def exposed(cls) -> tuple[str, ...]:
+        """Every status the API can return; the one source for ``?status=`` filters."""
+
+        return (
+            cls.RUNNING,
+            cls.COMPLETED,
+            cls.INSUFFICIENT_EVIDENCE,
+            cls.DEGRADED,
+            cls.REPORT_VALIDATION_FAILED,
+            cls.MAX_ITERATIONS,
+        )
+
 
 class InternalRunStatus:
     """Statuses that only exist inside the graph."""

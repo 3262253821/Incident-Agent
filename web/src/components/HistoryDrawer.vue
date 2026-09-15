@@ -4,8 +4,12 @@ import { runStatusLabel, runStatusTone } from '../constants/status'
 import { formatDuration, formatRelativeTime } from '../utils/time'
 import type { RunSummary } from '../types/api'
 
-defineProps<{ runs: RunSummary[] }>()
-const emit = defineEmits<{ close: []; select: [run: RunSummary] }>()
+defineProps<{ runs: RunSummary[]; hasMore?: boolean; loadingMore?: boolean }>()
+const emit = defineEmits<{
+  close: []
+  select: [run: RunSummary]
+  loadMore: []
+}>()
 
 /** 被中断的运行与普通 degraded 区分开，避免历史和主状态展示不一致。 */
 function runLabel(run: RunSummary) {
@@ -62,5 +66,13 @@ function runCounts(run: RunSummary) {
       <ArrowRight :size="16" />
     </button>
     <p v-if="!runs.length" class="drawer-empty">暂时没有运行记录。</p>
+    <button
+      v-if="runs.length && hasMore"
+      class="history-more"
+      :disabled="loadingMore"
+      @click="emit('loadMore')"
+    >
+      {{ loadingMore ? '加载中…' : '加载更多' }}
+    </button>
   </div>
 </template>

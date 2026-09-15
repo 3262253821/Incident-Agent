@@ -149,7 +149,7 @@ def test_list_returns_title_time_and_duration(client, session_factory):
             title="支付超时排查",
         )
 
-    item = client.get("/api/v1/runs").json()[0]
+    item = client.get("/api/v1/runs").json()["items"][0]
 
     assert item["title"] == "支付超时排查"
     assert item["started_at"] == "2026-09-15T03:00:00+00:00"
@@ -178,7 +178,9 @@ def test_list_duration_is_null_for_running_and_interrupted_runs(
             status="degraded",
         )
 
-    by_id = {item["run_id"]: item for item in client.get("/api/v1/runs").json()}
+    by_id = {
+        item["run_id"]: item for item in client.get("/api/v1/runs").json()["items"]
+    }
 
     assert by_id["run-running"]["duration_ms"] is None
     assert by_id["run-interrupted"]["duration_ms"] is None

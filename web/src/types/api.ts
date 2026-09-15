@@ -108,6 +108,29 @@ export interface RunSummary {
   duration_ms: number | null
 }
 
+/**
+ * 历史列表的一页（P1-3-3）。
+ *
+ * `next_cursor` 是服务端给的不透明游标：为 null 表示没有更多记录。用游标而不是
+ * offset，是因为历史是"不断新增"的列表，翻页期间新增一条 run 会让 offset 分页
+ * 重复或漏掉记录。
+ */
+export interface RunHistoryPage {
+  items: RunSummary[]
+  next_cursor: string | null
+}
+
+export interface RunHistoryQuery {
+  limit?: number
+  /** 可重复传：`?status=degraded&status=max_iterations`。 */
+  status?: string[]
+  /** 包含边界（>=），ISO 8601。 */
+  started_after?: string
+  /** 不包含边界（<），ISO 8601。 */
+  started_before?: string
+  cursor?: string
+}
+
 export interface RunResponse {
   run_id: string
   title: string

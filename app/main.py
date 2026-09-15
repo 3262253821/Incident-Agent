@@ -18,7 +18,7 @@ from .incident_agent.db.session import SessionLocal, check_database_connection
 from .incident_agent.routers.auth import router as auth_router
 from .incident_agent.routers.incidents import router as incidents_router
 from .incident_agent.routers.runs import router as runs_router
-from .incident_agent.services.storage import reclaim_stale_runs
+from .incident_agent.services.storage import purge_expired_runs, reclaim_stale_runs
 
 settings = get_settings()
 
@@ -28,12 +28,19 @@ logger = get_logger("startup")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Reclaim runs abandoned by a previous process before serving traffic.
+    """Reclaim abandoned runs, then apply the retention policy.
 
     ``create_run`` commits a ``running`` row before the graph runs, so a killed
     or reloaded process leaves rows that would otherwise stay ``running``
-    forever. Failures here must not stop the service from starting: the API is
-    still useful even if the cleanup could not run.
+    forever. Reclaiming runs first means a stale row is turned into a finished
+    ``degraded`` record before retention decides whether it is old enough to
+    delete.
+
+    Retention is **off by default** (``INCIDENT_RUN_RETENTION_DAYS=0``): the
+    history of a demo environment is material, not garbage. When it is enabled,
+    the number of deleted rows and the cutoff are logged, which is the audit
+    trail for the deletion. Failures here must not stop the service from
+    starting: the API is still useful even if the cleanup could not run.
     """
 
     try:
@@ -45,6 +52,21 @@ async def lifespan(app: FastAPI):
             logger.info("没有需要回收的中断记录")
     except Exception:
         logger.exception("回收中断记录失败，服务继续启动")
+
+    try:
+        if settings.run_retention_days > 0:
+            with SessionLocal() as db:
+                purged = purge_expired_runs(
+                    db,
+                    retention_days=settings.run_retention_days,
+                )
+            logger.warning(
+                "按保留策略删除历史记录 %d 条（保留 %d 天）",
+                purged,
+                settings.run_retention_days,
+            )
+    except Exception:
+        logger.exception("历史保留策略执行失败，服务继续启动")
 
     yield
 

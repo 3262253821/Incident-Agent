@@ -293,7 +293,7 @@ def test_runs_endpoint_reports_the_interrupted_flag():
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    by_id = {item["run_id"]: item for item in response.json()}
+    by_id = {item["run_id"]: item for item in response.json()["items"]}
     assert by_id["interrupted-run"]["interrupted"] is True
     assert by_id["interrupted-run"]["status"] == RunStatus.DEGRADED
     assert by_id["normal-run"]["interrupted"] is False

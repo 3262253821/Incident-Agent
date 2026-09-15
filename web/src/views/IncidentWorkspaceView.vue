@@ -20,6 +20,7 @@ const auth = useAuthStore()
 const incident = useIncidentStore()
 const apiOnline = ref(false)
 const showHistory = ref(false)
+const loadingMore = ref(false)
 
 const title = ref('订单服务返回 502')
 const content = ref(
@@ -93,6 +94,17 @@ async function selectRun(run: RunSummary) {
   }
 }
 
+async function loadMoreRuns() {
+  loadingMore.value = true
+  try {
+    await incident.loadMoreHistory()
+  } catch (failure) {
+    incident.error = apiErrorMessage(failure)
+  } finally {
+    loadingMore.value = false
+  }
+}
+
 onMounted(async () => {
   await refreshHealth()
   await auth.restore()
@@ -153,8 +165,11 @@ onMounted(async () => {
       <HistoryDrawer
         v-if="showHistory"
         :runs="incident.history"
+        :has-more="Boolean(incident.nextCursor)"
+        :loading-more="loadingMore"
         @close="showHistory = false"
         @select="selectRun"
+        @load-more="loadMoreRuns"
       />
     </div>
   </AppLayout>

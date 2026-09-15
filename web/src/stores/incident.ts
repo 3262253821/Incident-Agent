@@ -4,11 +4,13 @@ import { defineStore } from 'pinia'
 import { analyzeIncident } from '../api/incidents'
 import { apiErrorMessage } from '../api/client'
 import { getRun, listRuns } from '../api/runs'
-import type { RunResponse, RunSummary } from '../types/api'
+import type { RunHistoryQuery, RunResponse, RunSummary } from '../types/api'
 
 export const useIncidentStore = defineStore('incident', () => {
   const result = ref<RunResponse | null>(null)
   const history = ref<RunSummary[]>([])
+  /** 下一页游标；为 null 表示已经到底（P1-3-3 的服务端契约）。 */
+  const nextCursor = ref<string | null>(null)
   const running = ref(false)
   const error = ref('')
 
@@ -27,8 +29,25 @@ export const useIncidentStore = defineStore('incident', () => {
     }
   }
 
-  async function loadHistory() {
-    history.value = await listRuns()
+  /** 重新加载第一页（打开抽屉、或筛选条件变化时调用）。 */
+  async function loadHistory(params: RunHistoryQuery = {}) {
+    const page = await listRuns(params)
+    history.value = page.items
+    nextCursor.value = page.next_cursor
+    return history.value
+  }
+
+  /** 追加下一页。按 run_id 去重，避免翻页期间的新增记录造成重复行。 */
+  async function loadMoreHistory() {
+    if (!nextCursor.value) return history.value
+
+    const page = await listRuns({ cursor: nextCursor.value })
+    const known = new Set(history.value.map((item) => item.run_id))
+    history.value = [
+      ...history.value,
+      ...page.items.filter((item) => !known.has(item.run_id)),
+    ]
+    nextCursor.value = page.next_cursor
     return history.value
   }
 
@@ -47,5 +66,15 @@ export const useIncidentStore = defineStore('incident', () => {
     }
   }
 
-  return { result, history, running, error, analyze, loadHistory, selectRun }
+  return {
+    result,
+    history,
+    nextCursor,
+    running,
+    error,
+    analyze,
+    loadHistory,
+    loadMoreHistory,
+    selectRun,
+  }
 })

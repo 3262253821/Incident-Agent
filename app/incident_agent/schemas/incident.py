@@ -239,6 +239,23 @@ class RunSummary(BaseModel):
         )
 
 
+class RunSummaryPage(BaseModel):
+    """One page of history rows (P1-3-3).
+
+    Cursor pagination instead of offset: rows are ordered by
+    ``(started_at DESC, id DESC)`` and ``next_cursor`` carries the last row's key,
+    so a run created while the user is reading page 1 cannot shift the window the
+    way ``offset`` would (which repeats or skips rows).
+
+    There is no ``total``: counting a growing table on every page costs a second
+    scan, and the only question the UI asks is "is there more" —
+    ``next_cursor is None`` answers exactly that.
+    """
+
+    items: list[RunSummary] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
 class RunResponse(BaseModel):
     """Public response returned by the Agent API."""
 
