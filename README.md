@@ -1,6 +1,6 @@
 # Incident Agent
 
-Incident Agent 是一个面向研发和运维人员的故障初步分析助手。它接收故障标题、日志/现象和 DevAtlas 知识库 ID，由模型选择工具收集证据，再通过 LangGraph 编排流程并生成带来源的结构化报告。
+Incident Agent 是一个面向研发和运维人员的故障初步分析助手。它接收故障标题、日志/现象和（登录后从下拉里选择的）DevAtlas 知识库，由模型选择工具收集证据，再通过 LangGraph 编排流程并生成带来源的结构化报告。
 
 ## 项目边界
 
@@ -118,6 +118,7 @@ GET  /health
 GET  /health/db
 POST /api/v1/auth/login
 GET  /api/v1/auth/me
+GET  /api/v1/knowledge-bases
 POST /api/v1/incidents/analyze
 GET  /api/v1/runs
 GET  /api/v1/runs/{run_id}
@@ -135,6 +136,15 @@ GET  /api/v1/runs/{run_id}
 ```
 
 `/api/v1/incidents/analyze` 必须携带 DevAtlas Bearer JWT。Agent 只在当前请求中转发 Token，不保存 Token。
+
+知识库下拉的数据来源：
+
+```text
+GET /api/v1/knowledge-bases
+→ 200 [{"id": 4, "name": "DevAtlas 开发演示知识库", "description": "..."}]
+```
+
+这是 DevAtlas `GET /api/v1/knowledge-bases` 的**只读代理**：浏览器（5174）直连 DevAtlas（8000）会踩跨域，所以由 Agent 用同一个 Token 转发一次。DevAtlas 依旧按 Token 的 owner 过滤，Agent 不缓存、不落库、不重新签发 Token，也只下发 `id`/`name`/`description`（`owner_id` 与时间戳留在上游）。上游拒绝 → `401`（带 `WWW-Authenticate`），上游错误/不可达/响应形状不符 → `502`/`503`，账号下没有知识库则返回 `200 []`。前端登录后自动加载并默认选中第一项，因此不需要知道自己的知识库 ID。
 
 历史接口的职责是分开的：
 

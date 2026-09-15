@@ -17,6 +17,7 @@ from .incident_agent.core.logging import configure_logging, get_logger
 from .incident_agent.db.session import SessionLocal, check_database_connection
 from .incident_agent.routers.auth import router as auth_router
 from .incident_agent.routers.incidents import router as incidents_router
+from .incident_agent.routers.knowledge_bases import router as knowledge_bases_router
 from .incident_agent.routers.runs import router as runs_router
 from .incident_agent.services.storage import purge_expired_runs, reclaim_stale_runs
 
@@ -93,6 +94,7 @@ app.middleware("http")(request_id_middleware)
 
 app.include_router(auth_router)
 app.include_router(incidents_router)
+app.include_router(knowledge_bases_router)
 app.include_router(runs_router)
 
 

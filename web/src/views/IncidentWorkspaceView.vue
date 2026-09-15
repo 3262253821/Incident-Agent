@@ -9,12 +9,13 @@ import ReportPanel from '../components/ReportPanel.vue'
 import DegradedPanel from '../components/DegradedPanel.vue'
 import HistoryDrawer from '../components/HistoryDrawer.vue'
 import { apiErrorMessage } from '../api/client'
+import { listKnowledgeBases } from '../api/knowledgeBases'
 import { checkHealth } from '../api/system'
 import { RUN_STATUS, runStatusLabel, runStatusTone } from '../constants/status'
 import { formatDuration } from '../utils/time'
 import { useAuthStore } from '../stores/auth'
 import { useIncidentStore } from '../stores/incident'
-import type { RunSummary } from '../types/api'
+import type { KnowledgeBaseOption, RunSummary } from '../types/api'
 
 const auth = useAuthStore()
 const incident = useIncidentStore()
@@ -26,7 +27,14 @@ const title = ref('订单服务返回 502')
 const content = ref(
   '网关返回 502，order-service 日志显示 MySQL connection timeout。请分析可能原因并给出排查顺序。',
 )
-const knowledgeBaseId = ref(3)
+/**
+ * 知识库不再硬编码：这里是"选中的知识库"，初始为空，登录后由
+ * `GET /api/v1/knowledge-bases` 填进来（真实演示库 ID 不是固定值）。
+ */
+const knowledgeBaseId = ref<number | null>(null)
+const knowledgeBases = ref<KnowledgeBaseOption[]>([])
+const loadingKnowledgeBases = ref(false)
+const knowledgeBaseError = ref('')
 const topK = ref(5)
 
 const error = computed(() => incident.error)
@@ -60,6 +68,29 @@ async function refreshHealth() {
     apiOnline.value = true
   } catch {
     apiOnline.value = false
+  }
+}
+
+/**
+ * 拉取当前账号可选的知识库。
+ *
+ * 保留用户已经选中的项；它不在新列表里（例如换了账号）时退回第一项。列表为空时
+ * 保持 `null`，由表单给出"请选择知识库"的提示，而不是把空值当数字发给服务端。
+ */
+async function loadKnowledgeBases() {
+  loadingKnowledgeBases.value = true
+  knowledgeBaseError.value = ''
+  try {
+    const options = await listKnowledgeBases()
+    knowledgeBases.value = options
+    const stillAvailable = options.some((option) => option.id === knowledgeBaseId.value)
+    if (!stillAvailable) knowledgeBaseId.value = options.length ? options[0].id : null
+  } catch (failure) {
+    knowledgeBases.value = []
+    knowledgeBaseId.value = null
+    knowledgeBaseError.value = apiErrorMessage(failure)
+  } finally {
+    loadingKnowledgeBases.value = false
   }
 }
 
@@ -108,6 +139,8 @@ async function loadMoreRuns() {
 onMounted(async () => {
   await refreshHealth()
   await auth.restore()
+  // 令牌有效才有必要拉知识库；令牌无效时由登录页接管。
+  if (auth.user) await loadKnowledgeBases()
 })
 </script>
 
@@ -140,7 +173,11 @@ onMounted(async () => {
           v-model:top-k="topK"
           :running="incident.running"
           :error="error"
+          :knowledge-bases="knowledgeBases"
+          :loading-knowledge-bases="loadingKnowledgeBases"
+          :knowledge-base-error="knowledgeBaseError"
           @submit="submit"
+          @reload-knowledge-bases="loadKnowledgeBases"
         />
         <ExecutionTrace
           :running="incident.running"

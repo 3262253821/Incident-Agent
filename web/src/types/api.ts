@@ -19,6 +19,18 @@ export interface IncidentRequest {
   top_k: number
 }
 
+/**
+ * `GET /api/v1/knowledge-bases` 返回的一条可选知识库。
+ *
+ * Agent 代理 DevAtlas 的列表接口，只下发 `id`/`name`/`description`：`owner_id`
+ * 与时间戳属于 DevAtlas 的内部字段，不进浏览器契约。
+ */
+export interface KnowledgeBaseOption {
+  id: number
+  name: string
+  description: string | null
+}
+
 export interface Observation {
   iteration: number
   tool_name: string
