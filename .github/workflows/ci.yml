@@ -28,7 +28,10 @@ jobs:
       # 于是 `import app.main` 直接抛 RuntimeError，20 个测试文件在**收集阶段**
       # 就全错。全部测试用 SQLite 内存库，因此这里只给一个"配置有出处"的 URL，
       # 不连真实 MySQL；本地之所以看不到这个问题，是因为工作副本里有 .env。
-      INCIDENT_DATABASE_URL: sqlite+pysqlite:///:memory:
+      # 值必须加引号：以冒号结尾的裸标量会被 YAML 判为 "mapping values are not
+      # allowed here"，整个 workflow 解析失败（GitHub 会跑出一个 0 job 的失败运行，
+      # 工作流名退化成文件路径）。tests/test_ci_workflow.py 守住这一条。
+      INCIDENT_DATABASE_URL: "sqlite+pysqlite:///:memory:"
 
     steps:
       - uses: actions/checkout@v5
