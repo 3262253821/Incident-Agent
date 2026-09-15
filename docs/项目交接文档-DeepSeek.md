@@ -2,9 +2,9 @@
 
 > **用途**：上下文压缩、会话切换或换模型后的**第一恢复入口**。新会话读完本文即可接手，不需要回溯历史对话。
 >
-> **最后更新**：2026-09-15（P1-5-2 前后端类型统一 + 步骤契约只有一份；此前 P1-5-1、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成）。**本次为新会话做了一次导航一致性核对**：未完成项 15 项、测试基线 380 passed、下一步 P1-5-3。
+> **最后更新**：2026-09-15（**P1-5-3 前端测试与可访问性**：引入 Vitest/组件测试并把 50 条用例接进 CI，补 `:focus-visible`、`role=dialog`/ESC/焦点管理、`aria-live`、`prefers-reduced-motion`；此前 P1-5-1、P1-5-2、P1-3 整组、P1-6-1、P1-4-1、P1-4-5 均已完成）。**本次为新会话做了一次导航一致性核对**：未完成项 14 项、后端测试基线 **381 passed** + 前端 **50 passed**、下一步 **P1-5-4**。
 >
-> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`730268d`**（P1-5-2；更早的代码收尾是 P1-5-1 的 `39f1fe2`），其后是文档提交（勾选记录 `dad31a9`、CI 记录 `6367682`、本次交接刷新 `d2fb372`）。**文档提交会让 HEAD 每轮往后走一两个，所以交接时的准确 HEAD 请直接跑 `git log --oneline -1`（工作区应当是干净的）**；每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
+> **提交锚点**：代码提交从 `f5af0d7` 一路到 **`b0400fe`**（P1-5-3；P1-5-2 是 `730268d`、P1-5-1 是 `39f1fe2`），其后是文档提交（勾选与完成记录、CI 结果记录、交接刷新）。**文档提交会让 HEAD 每轮往后走一两个，所以交接时的准确 HEAD 请直接跑 `git log --oneline -1`（工作区应当是干净的）**；每一项的提交号都写在 `docs/项目补充优化.md` 的完成记录与 3.3 节里。**当前 HEAD 请以 `git log --oneline -5` 为准**（本文档自身也是提交之一，写死哈希会立刻过时）。
 >
 > **文档地图（新会话先看这张表）**：
 >
@@ -15,7 +15,7 @@
 > | `docs/测试对照-设计文档章节.md` | 测试 ↔ `docs/agent-mvp设计.md` 章节对照（含"测不了"的边界） |
 > | `docs/agent-mvp设计.md` | 设计文档（§17 测试设计、§16 安全策略等，是所有测试的验收依据） |
 >
-> **下一步要做什么**：用户已定顺序 A → B → C，A、B 都已完成推送，C 的 **P1-5-1（`39f1fe2`）与 P1-5-2（`730268d`）也已完成**；**当前 = C 的第三步 P1-5-3（前端测试与可访问性）**——要引入 Vitest/组件测试，并补 `:focus-visible`、`role=dialog`/ESC/焦点管理、`aria-live`、`prefers-reduced-motion`，之后 P1-5-4 ~ P1-5-6。未完成项与各自的缺口见 `docs/项目补充优化.md` 2.2 节。
+> **下一步要做什么**：用户已定顺序 A → B → C，A、B 都已完成推送，C 的 **P1-5-1（`39f1fe2`）、P1-5-2（`730268d`）与 P1-5-3（`b0400fe`）也已完成**；**当前 = C 的第四步 P1-5-4（统一 401 处理并区分网络故障）**——`web/src/api/client.ts` 只有请求拦截器，要加响应拦截器按 HTTP 状态处理 401（保留 redirect），后端不可达只提示不强制退出；之后 P1-5-5（历史抽屉筛选/重跑/失败细分）与 P1-5-6（422 `loc` 映射到字段）。未完成项与各自的缺口见 `docs/项目补充优化.md` 2.2 节。
 >
 > **项目根目录**：`E:\IncidentAgent`｜**关联项目**：`E:\RagKnowledgeSystem`（DevAtlas）
 >
@@ -73,20 +73,20 @@ GitHub 账号     : 3262253821
 
 | 指标 | 最初 | 现在 |
 | --- | --- | --- |
-| 提交数 | 0 | **60+ 个提交**（代码提交到 `730268d`，其后为文档提交；准确值以 `git rev-list --count HEAD` 为准） |
-| 测试用例 | 18 passed | **380 passed, 0 warnings** |
-| 测试文件 | 4 个（用户原有） | **31 个**（另有 `tests/conftest.py` 做代理变量隔离） |
+| 提交数 | 0 | **70+ 个提交**（代码提交到 `b0400fe`，其后为文档提交；准确值以 `git rev-list --count HEAD` 为准） |
+| 测试用例 | 18 passed | 后端 **381 passed, 0 warnings**；前端 **50 passed**（P1-5-3 新增，vitest + jsdom） |
+| 测试文件 | 4 个（用户原有） | 后端 **31 个**（另有 `tests/conftest.py` 做代理变量隔离）；前端 **6 个 `.spec.ts`**（`web/tests/`） |
 | ruff（全仓） | 193 个错误 | **0** |
 | 弃用/SQLAlchemy 警告 | 131 条 | **0** |
 | 数据库迁移 | 1 个 | 3 个（新增 `370ee3c8987d` 中断标记列、`c78153d58823` 降级摘要列） |
-| CI | 无 | **绿**（最新：P1-5-2 的 run `34941997248`、`34942094169` 两个 job 全过；首次确认是 P1-4-5 的 `34930276951`） |
-| 清单完成度 | — | **已勾 33 项（含审计基线）/ 未勾 15 项** |
+| CI | 无 | **绿**（最新确认到 P1-5-2：run `34941997248`、`34942094169` 两个 job 全过；P1-5-3 的推送待确认——前端 job 现在多了一步 `npm run test`） |
+| 清单完成度 | — | **已勾 34 项（含审计基线）/ 未勾 14 项** |
 
 **唯一的任务源是 `docs/项目补充优化.md`**（勾选表 + 完成记录 + 执行顺序记录）。本文只做导航与背景。
 
 ---
 
-## 4. 已完成内容一览（33 项，每项都满足"实现 + 测试 + 推送"）
+## 4. 已完成内容一览（34 项，每项都满足"实现 + 测试 + 推送"）
 
 | 项目 | 一句话说明 | 提交 |
 | --- | --- | --- |
@@ -111,9 +111,10 @@ GitHub 账号     : 3262253821
 | P1-4-4 | 锁定依赖（`requirements-lock.txt` 62 个精确版本 + `requirements-dev.txt`） | `32ed023` |
 | P1-6-1 | 知识库由手填 ID 改为**登录后自动加载的下拉**；新增 Agent 只读代理端点 `GET /api/v1/knowledge-bases`（Token 原样转发、响应只下发 `id`/`name`/`description`、上游 401/404/5xx/超时归一化）；提交前字段级校验（空值不再变 `NaN`）。**清单外新增项**（已在 `docs/项目补充优化.md` 补编号） | `cdbd7db` |
 | P1-4-1 | 补齐设计文档要求的测试：新增 3 个测试文件 45 条（输入边界、统一工具结果协议、§17.2 案例 2/3/5/6/7/9 + 大输入）；修掉"**纯空白标题/内容能进模型**"的真实缺口（`str_strip_whitespace`）；25 个既有测试文件补 `设计文档章节：…`，新增 `docs/测试对照-设计文档章节.md` 做十条案例逐条对照 | `9d29fc9` |
-| P1-4-5 | 让 CI **真的变绿**：第一次读真实运行结果就发现它一直是红的。修掉 ① 无 `.env` 时 20 个测试文件在收集阶段即失败（backend job 显式提供 `INCIDENT_DATABASE_URL`）；② 两条用例静默依赖开发机真实 MySQL（`test_error_handling` 补 `get_db` 覆盖、`test_model_config` 显式设 URL）；③ 自己引入的 YAML 引号缺陷（表现为 0 job 的失败运行）。新增 `tests/test_ci_workflow.py`（6 条）守住 workflow 定义。run `34930276951` 两个 job 全绿 | `470817e`、`8eea1fb` |
+| P1-4-5 | 让 CI **真的变绿**：第一次读真实运行结果就发现它一直是红的。修掉 ① 无 `.env` 时 20 个测试文件在收集阶段即失败（backend job 显式提供 `INCIDENT_DATABASE_URL`）；② 两条用例静默依赖开发机真实 MySQL（`test_error_handling` 补 `get_db` 覆盖、`test_model_config` 显式设 URL）；③ 自己引入的 YAML 引号缺陷（表现为 0 job 的失败运行）。新增 `tests/test_ci_workflow.py`（P1-5-3 又加 1 条变 7 条）守住 workflow 定义。run `34930276951` 两个 job 全绿 | `470817e`、`8eea1fb` |
 | P1-5-1 | 前端 7 个压行文件展开为常规排版（`styles.css` 59 → 1052 行，另有 6 个 Vue 组件）+ 排版守门测试；用编译产物证明零行为差异（生产构建产物与改动前逐字节相同） | `39f1fe2` |
 | P1-5-2 | 前后端类型统一：先修根因——`POST /analyze` 与 `GET /runs/{id}` 改用同一份步骤投影（此前 5 条步骤在两个接口上有 4 种形状、泄漏 `_started_at`/`ok`/`attempts` 等内部字段、且缺 `step_index`）；再按真实契约重写 `web/src/types/api.ts`，并用 OpenAPI schema + 真实载荷双向比对 17 个 TS 接口接入 CI | `730268d` |
+| P1-5-3 | 前端测试与可访问性：引入 Vitest + `@vue/test-utils` + jsdom（50 条 / 6 个文件，`npm run test` 进 CI），把此前只有 `tmp/` 手跑脚本的时间工具纳入回归；补 `role=dialog`+ESC+焦点陷阱与焦点归还、`aria-live` 播报、`role=alert`/`aria-busy`、`:focus-visible`、`prefers-reduced-motion`；顺带修掉"ESC 监听器装在 `await` 之后导致抽屉刚打开关不掉"的真实缺陷 | `b0400fe` |
 
 详细完成记录（改了什么文件、怎么验证、反证结果、是否影响迁移/API/前端、简历可用事实）都在 `docs/项目补充优化.md` 对应条目下。
 
@@ -121,15 +122,15 @@ GitHub 账号     : 3262253821
 
 ## 5. 还差什么
 
-### 5.1 清单内未完成（15 项）
+### 5.1 清单内未完成（14 项）
 
 | 分组 | 条目 | 现状与说明 |
 | --- | --- | --- |
 | 测试与工程化 | ~~P1-4-1 补齐设计文档要求的测试~~ / ~~P1-4-5 增加 CI~~ | **都已完成**（见第 4 节）：P1-4-1 补 45 条测试 + 章节记账；P1-4-5 CI 变绿并已读真实运行结果。测试与工程化这一组已清空 |
-| 前端质量（6 项） | ~~P1-5-1 拆分多语句单行代码~~ | **已完成**（`39f1fe2`）：核对后发现实际有 **7 个**文件压行（审计只点了 2 个），已全部展开并加排版守门测试 |
+| 前端质量（3 项） | ~~P1-5-1 拆分多语句单行代码~~ | **已完成**（`39f1fe2`）：核对后发现实际有 **7 个**文件压行（审计只点了 2 个），已全部展开并加排版守门测试 |
 | | ~~P1-5-2 前后端类型统一~~ | **已完成**（`730268d`）：核对后发现问题比清单写的更严重——两个接口的步骤形状不同（analyze 5 条步骤 4 种形状、泄漏内部字段、缺 `step_index`），已统一为一份投影；17 个手写 TS 类型进入 CI 双向比对 |
-| | P1-5-3 前端测试与可访问性 | 无 Vitest/组件测试；历史抽屉无 `role=dialog`/ESC/焦点管理；加载态无 `aria-live`；无 `prefers-reduced-motion`；焦点环被去掉 |
-| | P1-5-4 统一 401 处理 | 无响应拦截器，仍靠"错误文案里包含 401"判断退出；网络抖动会误清 Token |
+| | ~~P1-5-3 前端测试与可访问性~~ | **已完成**（`b0400fe`）：核对后确认审计原文的 5 处"0 处"全部属实；已引入 Vitest（50 条进 CI）并补 `role=dialog`/ESC/焦点管理、`aria-live`、`:focus-visible`、`prefers-reduced-motion`。清单里"前端质量"剩 3 项 |
+| | P1-5-4 统一 401 处理 | **下一步**。无响应拦截器，仍靠"错误文案里包含 401"判断退出；网络抖动会误清 Token |
 | | P1-5-5 历史抽屉使用详情接口 | **已被 P1-3-1 / P1-3-3 部分完成**（点开拉详情、"加载更多"已通）；剩下筛选交互、重跑、失败状态细分展示 |
 | | P1-5-6 前置校验与字段级提示 | **P1-6-1 已完成"知识库为空在提交前拦下"这一半**；剩下 422 数组错误按 `loc` 映射到字段、不同失败状态的细分展示 |
 | 产品增强（7 项） | P2-1 SSE 流式分析 / P2-2 部分成功继续报告 / P2-3 固定评测集与回归基线 / P2-4 Token 与成本观测 / P2-5 真实服务状态 provider / P2-6 前端 Playwright E2E / P2-7 Docker 部署复现 | 都未开始做。注意 P2-4 里"耗时"部分已由 P1-3-2 完成，剩 token usage 与成本 |
@@ -140,23 +141,23 @@ GitHub 账号     : 3262253821
 1. **~~知识库下拉选择~~ → 已完成，编号 P1-6-1（见第 4 节与 `docs/项目补充优化.md` 第 3.3 节）。** 前端不再写死 `knowledgeBaseId = ref(3)`：登录后 `GET /api/v1/knowledge-bases` 自动加载可选知识库并默认选中第一项（`devatlas-demo` 只有 ID **4** 那一个库，实测返回 `[{"id":4,...}]`）。
 2. **真实端到端从未跑通**：已做过的活体验证覆盖真实 MySQL、真实 DevAtlas 鉴权、真实 HTTP、真实过期 JWT、真实 MySQL 删除（savepoint 回滚），但**分析与检索本身是打桩的**——真实 DeepSeek 模型返回 + 真实 `/search` 检索这条链路一次都没跑过。P1-5-2 又确认了一次这条边界：`POST /analyze` 的**运行时**步骤载荷是用真实服务函数 + 真实落库往返验证的，**没有**跑真实 HTTP 的 analyze（要点它就得先有真实模型返回）。
 3. **~~GitHub Actions 结果未确认~~ → 已解决（2026-09-15，P1-4-5）**：run `34930276951` 两个 job 全绿。之前"API 一直 403"的真正原因是查询走了开发机代理（Clash 共享出口 IP，匿名配额用尽）；用 `httpx.Client(trust_env=False)` 直连 `api.github.com` 就能读 run/job/step。
-4. **前端零自动化测试（P1-5-3 开始解决）**：目前只有 `vue-tsc` + `vite build`，外加两次手工/进程内验证（Node 直跑时间工具、真实服务拉 `/openapi.json`）与两个 Python 侧的守门测试（排版 `tests/test_frontend_formatting.py`、类型契约 `tests/test_api_type_contract.py`）；**界面实际长什么样仍没有自动手段**。
+4. **~~前端零自动化测试~~ → 已解决（2026-09-15，P1-5-3）**：`web/tests/` 下 50 条 vitest 用例（6 个文件）覆盖 store、模态抽屉的 ESC/焦点管理、播报、表单错误语义，并用 postcss 解析真实 `styles.css` 守住焦点环与减动效果；`npm run test` 已进 CI 前端 job。**仍然欠着的**是**浏览器级**验证——jsdom 不评估 `:focus-visible` 的匹配语义，也不等于屏幕阅读器实际播报；真实点击与真实渲染引擎属 **P2-6 Playwright**。
 5. **两笔已知未修的小债**：① `report`/`degraded_summary` 是 JSON 列，"没有报告"可能落成 SQL `NULL` 或 JSON 字面量 `null`（真实 MySQL 8.0.41 上实测 `report IS NULL` 为 0 而 `JSON_TYPE(report)` 为 `'NULL'`），将来用 SQL 过滤"有报告"会踩；② 保留策略默认 `INCIDENT_RUN_RETENTION_DAYS=0`（关闭），**从未在真实默认配置下开启运行过**，只在测试与一次"savepoint 内执行后回滚"的真实 MySQL 验证里跑过。
 
 ### 5.3 下一步顺序（用户已定：A → B → C）
 
 - **A（已完成）**："知识库下拉选择" → 编号 **P1-6-1**，后端代理端点 + 前端登录后自动加载的下拉，已实现/测试/活体验证/反证/推送。
 - **B（已完成）**：**P1-4-1**（补 45 条测试 + 章节记账）与 **P1-4-5**（CI 变绿：run `34930276951` 两个 job 全绿）。
-- **C（进行中）**：**P1-5-1 已完成**（`39f1fe2`：7 个压行文件展开 + 排版守门测试）、**P1-5-2 已完成**（`730268d`：步骤契约统一 + CI 类型比对）；**下一步 P1-5-3**（前端测试与可访问性：Vitest/组件测试 + `focus-visible`/`role=dialog`/ESC/焦点管理/`aria-live`/`prefers-reduced-motion`），之后 P1-5-4 ~ P1-5-6，一次收掉 401 处理、历史抽屉交互与字段级提示。
+- **C（进行中）**：**P1-5-1 已完成**（`39f1fe2`：7 个压行文件展开 + 排版守门测试）、**P1-5-2 已完成**（`730268d`：步骤契约统一 + CI 类型比对）、**P1-5-3 已完成**（`b0400fe`：Vitest 50 条进 CI + 键盘可达/焦点管理/播报/减动效果）；**下一步 P1-5-4**（统一 401 处理并区分网络故障：加响应拦截器、后端不可达只提示不退出），之后 P1-5-5 与 P1-5-6，一次收掉历史抽屉交互与字段级提示。
 
 用户明确指定按这个顺序推进；**仍然遵守"一次一项、做完等指示"**，不要连做两项。
 
-**P1-5-3 开工前要知道的事**（这一项与前面几项不同，它会引入新依赖）：
+**P1-5-4 开工前要知道的事**：
 
-- 会**新增前端依赖**：Vitest + `@vue/test-utils` + `jsdom`，动 `package.json` 与 `package-lock.json`；装完后 CI 前端 job 里的 `npm ci` 才有这些包（本地 `npm install` 需要网络）。
-- 还要把 `npm run test` 加进 `.github/workflows/ci.yml` 的前端 job——**改 YAML 前后都要跑一次 `tests/test_ci_workflow.py`**（P1-4-5 的事故：一个冒号写错就得到一个 0 job 的失败运行）。
-- `web/src/utils/time.ts` 现在是 `node --experimental-strip-types tmp\check_time_helpers.ts` 手跑的 14 条用例（见 7.4），应当**搬进正式测试**，避免两套并存。
-- 可访问性那半边改的是 `HistoryDrawer.vue`（`role=dialog`/ESC/焦点陷阱与归还）、`IncidentWorkspaceView.vue`（加载态 `aria-live`）、`styles.css`（`:focus-visible`、`prefers-reduced-motion`）——注意 `styles.css` 已被 P1-5-1 展开成 1052 行、并受排版守门测试约束（一条规则/声明各占一行，单行 ≤200 字符）。
+- 现状：`web/src/api/client.ts` 只有请求拦截器（贴 Token），**没有响应拦截器**；`IncidentWorkspaceView.submit()` 里靠 `apiErrorMessage(failure).includes('401')` 判断退出——这是把"错误文案"当控制流，后端改文案就会静默失效。
+- `web/src/stores/auth.ts::restore()` 目前**任何异常都清 Token**，包括网络不可达；P1-5-4 要把它改成"401/403 才退出，连接失败只提示"。
+- **现在有测试可以承载这条改动了**（P1-5-3 的产物）：`web/tests/stores.spec.ts` 已经固定了 `restore()` 的三种分支、`web/tests/forms.spec.ts` 固定了错误语义；加响应拦截器时**先改这两处的期望值再改实现**，否则会看起来"测试突然变红"。
+- 401 的处理必须保留跳转登录页的行为（`router.beforeEach` 看的是 `localStorage` 里的 token），并沿用后端统一错误契约的 `error_code`（`UNAUTHORIZED`）而不是文案。
 
 ---
 
@@ -165,25 +166,28 @@ GitHub 账号     : 3262253821
 ```text
 1. 读 docs/项目交接文档-DeepSeek.md（本文）和 docs/项目补充优化.md，
    按用户指定的 A → B → C 顺序推进：A（P1-6-1）、B（P1-4-1、P1-4-5）与
-   C 的前两步（**P1-5-1 `39f1fe2`、P1-5-2 `730268d`**）都已完成，
-   下一步是 **P1-5-3（前端测试与可访问性）**
+   C 的前三步（**P1-5-1 `39f1fe2`、P1-5-2 `730268d`、P1-5-3 `b0400fe`**）都已完成，
+   下一步是 **P1-5-4（统一 401 处理并区分网络故障）**
 
 2. 读该条目下面列出的「涉及文件」，先读代码再动手，不要凭记忆假设接口
    —— 涉及 DevAtlas 接口时必须读 E:\RagKnowledgeSystem\backend 的真实代码
 
 3. 实现改动，然后按顺序验证：
-     py -m pytest tests -q            # 必须全绿（当前基线 380 passed）
+     py -m pytest tests -q            # 必须全绿（当前基线 381 passed）
      py -m ruff check .               # 全仓必须 0（CI 也跑这条）
      py -m compileall -q app migrations tests
      py -m alembic check              # 只在动了 models/ 时才需要（需本机 MySQL）
      cd web; npm run build            # 只在动了前端时才需要
+     cd web; npm run test             # 前端单测（50 条；动了 web/ 就必须跑）
 
    新增测试时同时更新 docs/测试对照-设计文档章节.md，并在模块 docstring 里
-   写明「设计文档章节：§x.y」（P1-4-1 建立的记账约定）。
+   写明「设计文档章节：§x.y」（P1-4-1 建立的记账约定；前端测试见该文档第 6 节）。
 
 4. 做「反证」：把修复临时回退成旧行为，确认相关测试确实会失败，再恢复
    —— 这是本项目每项完成记录里都有的固定动作，也是能写进简历的证据
    —— 实操：先 Copy-Item 备份到 tmp/，改坏，跑测试看失败，再 Copy-Item 恢复
+   —— 小心：**备份要用绝对路径，且每次实验前重新备份**。P1-5-3 踩过坑：第一次
+      实验留下的旧备份在后续批次里被当成"当前状态"恢复，把已经修好的文件覆盖回去了。
 
 5. 更新 docs/项目补充优化.md：打勾 + 写完成记录（改了什么文件、怎么验证、
    反证结果、测试结果、是否影响迁移/API/前端、简历可用事实）
@@ -197,7 +201,7 @@ GitHub 账号     : 3262253821
 8. 推送后读一次真实 CI 结果（两个 job 都要绿）——别用徽章等缓存，直接查 API：
      py tmp\gh_runs.py                 # httpx.Client(trust_env=False) 直连 api.github.com
    —— 后端 job 会跑 ruff / pytest / compileall / alembic heads，前端 job 会跑
-      npm ci + npm run build；它同时是"干净环境可跑"的唯一证明。
+      npm ci + npm run build + npm run test；它同时是"干净环境可跑"的唯一证明。
    —— 碰过 .github/workflows/ci.yml 时必须先本地解析一次 YAML，否则会得到
       一个 0 job 的失败运行（tests/test_ci_workflow.py 也会拦住这种情况）。
 ```
@@ -242,7 +246,7 @@ NO_PROXY=localhost,127.0.0.1,::1,[::1]
 
 `[::1]` 这个写法会让 `httpx.Client` 在**构造阶段**就抛 `InvalidURL: Invalid port: ':1]'`（httpx 把它拼成 `all://*[::1]` 模式）。后果与处理：
 
-- **pytest**：会让 23 条测试在任何断言之前失败 → 已由 `tests/conftest.py` 在会话开始时清掉代理变量修好，现在应当是 **380 passed**；
+- **pytest**：会让 23 条测试在任何断言之前失败 → 已由 `tests/conftest.py` 在会话开始时清掉代理变量修好，现在应当是 **381 passed**（前端 50 条用 jsdom，不碰网络）；
 - **真实服务**：所有 DevAtlas 调用（登录、知识库授权、检索）都会 500（已复现 `exception_type: InvalidURL`）→ 用 `tmp/run_agent_clean.py` 启动（它在 Python 里 pop 掉代理变量再 `uvicorn.run`）；
 - **注意**：在这个 shell 里 `$env:NO_PROXY=...` 对子进程**无效**（每层子进程都会被重新注入），必须由 Python 进程自己 pop。
 
@@ -251,17 +255,19 @@ NO_PROXY=localhost,127.0.0.1,::1,[::1]
 - `requirements-lock.txt`（62 个精确版本）+ `requirements-dev.txt`（pytest、ruff）是复现环境的正确入口；`requirements.txt` 是**经实测校准的下限**（`openai>=3.0`、`langchain-core>=1.0`、`langchain-openai>=1.0`、`langgraph>=1.0`、`httpx>=0.28`），旧下限（0.3/0.27）会把干净环境装成另一个大版本。
 - 本机关键的实测版本：openai 3.13.0、langchain-core 1.6.3、langchain-openai 1.6.2、langgraph 1.2.11、fastapi 0.141.1、SQLAlchemy 2.0.52、pydantic 2.13.5、alembic 1.20.0、httpx 0.28.1、pytest 9.1.1、ruff 0.16.5。
 - `.env`（不提交）需要：`INCIDENT_DB_*`、`DEVATLAS_BASE_URL`、`DEEPSEEK_API_KEY`。可选变量与默认值见 `.env.example`（含 `INCIDENT_RUN_RETENTION_DAYS=0`）。
-- **测试不需要 MySQL**：全部 380 条测试使用 SQLite 内存库，可离线运行；只有 `alembic check` 需要本机 MySQL。**但两件事要注意**：① 缺少 `INCIDENT_DATABASE_URL` 时连 `import app.main` 都会抛 `RuntimeError`（配置强校验），所以干净环境（含 CI）必须提供一个数据库 URL（CI 用 `sqlite+pysqlite:///:memory:`）；② 每个 API 测试都要自己覆盖 `get_db`，否则会走开发机 `.env` 指向的真实 MySQL（见第 9 节第 10/11 条）。
+- **测试不需要 MySQL**：后端 381 条测试全部使用 SQLite 内存库，可离线运行（前端 50 条用 jsdom，连数据库都不需要）；只有 `alembic check` 需要本机 MySQL。**但两件事要注意**：① 缺少 `INCIDENT_DATABASE_URL` 时连 `import app.main` 都会抛 `RuntimeError`（配置强校验），所以干净环境（含 CI）必须提供一个数据库 URL（CI 用 `sqlite+pysqlite:///:memory:`）；② 每个 API 测试都要自己覆盖 `get_db`，否则会走开发机 `.env` 指向的真实 MySQL（见第 9 节第 10/11 条）。
 
-### 7.4 前端工具函数的真实验证方式（前端还没有测试框架）
-
-Node 22 支持类型擦除，可以直接执行 TS 工具函数：
+### 7.4 前端测试与验证方式（P1-5-3 起有正式框架）
 
 ```powershell
-cd E:\IncidentAgent; node --experimental-strip-types tmp\check_time_helpers.ts
+cd E:\IncidentAgent\web; npm run test      # vitest run，jsdom 环境，50 条 / 6 个文件
+cd E:\IncidentAgent\web; npm run build     # vue-tsc -b && vite build
 ```
 
-（`tmp/check_time_helpers.ts` 已验证 `web/src/utils/time.ts` 的 14 条用例。P1-5-3 引入 Vitest 后应改为正式测试。）前端目前真正**自动化**的部分只有 `vue-tsc` 类型检查 + `vite build`，而这两步现在也由 CI 的前端 job（Ubuntu + Node 22 + `npm ci`）真实跑过一遍（见第 6 节第 8 步）；界面行为本身仍无自动手段。
+- 配置在 `web/vitest.config.ts`（与生产 `vite.config.ts` 分开：不想让 jsdom 进生产依赖图）；用例在 `web/tests/*.spec.ts`，`helpers.ts` 提供 `makeRun()` 与 `resetDom()`。
+- **不要再往 `tmp/check_time_helpers.ts` 加用例**：那 14 条已搬进 `web/tests/time.spec.ts`（`tmp/` 里那份不再维护）。
+- 想验证"真实渲染产物"时，可用随 vue 一起装的 `@vue/server-renderer` 做 SSR 探针（P1-5-3 就这么确认了 `role="dialog"`/`aria-live` 确实出现在产物里）；探针脚本放 `tmp/`，不进仓库。
+- 浏览器级行为（`:focus-visible` 的匹配语义、真实点击、屏幕阅读器实际播报）**仍然没有**自动化手段，属 P2-6 Playwright。
 
 ---
 
@@ -279,6 +285,7 @@ cd E:\IncidentAgent; node --experimental-strip-types tmp\check_time_helpers.ts
 | `tmp/measure_n_plus_one.py` | 用 SQLAlchemy 事件统计语句数（N+1 证据） |
 | `tmp/live_kb_catalog.py` | 真实登录后打 `GET /api/v1/knowledge-bases`，并与 DevAtlas 直连结果逐字段对比（P1-6-1） |
 | `tmp/gh_runs.py` | `trust_env=False` 直连 GitHub API，读 CI 的 run/job/step 真实结论（P1-4-5） |
+| `tmp/p153_probe/p153-live.spec.ts` | 用 `@vue/server-renderer` 真实 SSR 渲染组件，检查无障碍属性出现在产物 HTML 里（P1-5-3；输出在 `tmp/p153_probe_output.txt`） |
 | `tmp/backup_agent_runs_before_p042.sql`、`tmp/backup_before_degraded_summary.sql` | 改数据前留的 MySQL 备份（当时的安全网） |
 
 > `tmp/` 里还有一堆 `*_backup.py` 是各次反证前的文件备份，`commit_msg_*.txt` / `msg_*.txt` 是提交信息草稿，`annotate_*.py`、`trim_checklist.py`、`probe_*.py` 是一次性脚本——都可以随时删，不影响任何东西。
@@ -320,17 +327,26 @@ incident_agent.agent_runs: owner 1 有 4 条，owner 5 有 1 条（合计 5 条�
 14. **Vue 模板的空白是有语义的，"换行"与"空格"不等价**（P1-5-1 实测；编辑任何 `.vue` 模板前先读这条）：`whitespace: 'condense'` 下，**元素与元素之间**新增的换行会被整段删除（安全），但**紧贴文本或插值**的换行会被并进文本、变成一个空格——`<label>用户名<input/></label>` 拆成三行后文本会变成 `" 用户名 "`，渲染凭空多出空格。规律：拆行只在元素边界做；混合内容（文本/插值与元素相邻）必须留在同一行；一行太长时只拆"最内层标签的属性"（标签内部的空白无意义）。P1-5-1 用 `@vue/compiler-sfc` 的 `compileTemplate` 产物逐字节比对验证过这些规则，探针在 `tmp/p151_probe.mjs`（`tmp/` 不提交）。
 15. **别把 `ts.createPrinter()` 当成"空白无关的规范化"**（P1-5-1 走过这段弯路）：TypeScript 的 printer 对**未变换的解析节点**会直接回写原始源码片段，换行与缩进照样留在输出里——看起来比较过了，其实什么都没规范化（第一次就是这么被骗过的）。要比对脚本层语义，用 AST 叶子 **token 流**（忽略显式分号与尾随逗号即可；字符串内部空格仍逐字比对，注释单独比对）。
 16. **`app.openapi()` 就是真实服务外发的契约**（P1-5-2 实测）：真实启动服务后 HTTP 拉 `/openapi.json`，13 个受约束组件与进程内 `app.openapi()` 逐字节相等，所以类型契约测试不必起服务。但 `RunResponse.steps`/`observations` 在后端是 JSON dict，OpenAPI 里只有 `array<object>`——这类"后端没有 Pydantic 模型"的载荷必须用**真实数据**比对（P1-5-2 的做法：跑真实 Graph + `append_steps` 落库往返）。
+17. **前端测试的 jsdom 陷阱**（P1-5-3 实测）：① `import.meta.url` 在 vitest 里会被改写成 http 形式，`fileURLToPath(import.meta.url)` 直接抛 `The URL must be of scheme file`——测试里定位文件用 `process.cwd()`（测试的 cwd 是 `web/`）；② `wrapper.get()` 找不到元素时抛的是 `Target cannot be null or undefined`，`emitted('test')` 返回 `undefined` 时 `.toHaveLength()` 也抛同一句话——**看到这句话先怀疑"元素/事件不存在"，而不是断言写法**；③ jsdom 不会因为 `trigger('click')` 就去设置 `document.activeElement`（真实浏览器会），测焦点时必须显式 `element.focus()`。
+18. **PowerShell 5.1 读脚本按 ANSI，中文会乱码成语法错误**（P1-5-3 实测）：用文件工具写出的 `.ps1` 是 UTF-8 **无 BOM**，`powershell -File` 会按 GBK 解码，中文注释/字符串变成乱码后连引号都配不上（报一堆"哈希文本不完整/意外的标记"）。**给脚本加 UTF-8 BOM** 即可：
+    ```powershell
+    $t=[System.IO.File]::ReadAllText((Resolve-Path $p), [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Resolve-Path $p), $t, [System.Text.UTF8Encoding]::new($true))
+    ```
+    另外：`.NET` 静态调用（`[System.IO.File]::ReadAllBytes`）会把**进程的当前目录重置成 PowerShell 的启动目录**，之后所有相对路径都会指错——脚本里一律传绝对路径。用 `Get-Content` 看 UTF-8 文件也会花屏（见第 9 条），要读内容用文件工具。
+19. **反证的备份要用绝对路径、且每批实验前重新备份**（P1-5-3 踩的坑）：第一次失败的实验跑给 `tmp/p153_backup/` 留下了一份**早于最新修改**的备份，第二批实验用 `-replace` 拼出的相对路径既非绝对、文件名也不对，于是"恢复"实际上什么都没做（`Copy-Item` 报 `Cannot find path`，`$ErrorActionPreference='Stop'` 也没拦住非终止错误）。后果是 E1 的改动（把 `addEventListener` 换成注释）留在了工作区，差点被当成"已恢复"。**核对方式**：每个实验恢复后立刻比 `Get-FileHash`，并保留"恢复后逐字节一致"的输出。
 
 ---
 
 ## 10. 尚未验证 / 已知功能边界（如实列出，不要当成已完成）
 
 1. **真实模型返回与真实检索未跑通**（见 5.2 第 2 条）：已验证的是真实 DB、真实鉴权、真实 HTTP、真实过期令牌；**分析链路仍靠 FakeModel/MockRagGateway**。
-2. **~~CI 在 GitHub 上的运行结果未确认~~ → 已确认（2026-09-15）**：run `34930276951` 两个 job 全绿，P1-4-5 已勾选；此后每一项推送后都读了真实结果（P1-5-1：`34932240446`；P1-5-2：`34941997248`、`34942094169`），**都全绿**。顺带发现并修掉了三类"只在开发机上通过"的缺陷（无 `.env` 时收集阶段失败、两条用例依赖真实 MySQL、workflow 里的 YAML 引号），其中第一条正是 CI 一直红的原因。
-3. **前端没有浏览器级自动化测试**（P1-5-3 开始解决）：只有 `vue-tsc` + `vite build`，加上 P1-5-1/P1-5-2 留下的两个 **Python 侧**守门测试（`tests/test_frontend_formatting.py` 管排版、`tests/test_api_type_contract.py` 管类型契约）与一次 Node 直跑时间工具；界面行为本身仍无自动手段。
+2. **~~CI 在 GitHub 上的运行结果未确认~~ → 已确认（2026-09-15）**：run `34930276951` 两个 job 全绿，P1-4-5 已勾选；此后每一项推送后都读了真实结果（P1-5-1：`34932240446`；P1-5-2：`34941997248`、`34942094169`），**都全绿**。顺带发现并修掉了三类"只在开发机上通过"的缺陷（无 `.env` 时收集阶段失败、两条用例依赖真实 MySQL、workflow 里的 YAML 引号），其中第一条正是 CI 一直红的原因。**P1-5-3 的推送结果尚未读**（前端 job 新增了 `npm run test` 一步，这是"这批测试在干净环境里也能跑"的唯一证明）。
+3. **前端仍没有浏览器级自动化测试**（P1-5-3 补上了组件级）：现在有 `vue-tsc` + `vite build` + **50 条 vitest/jsdom 用例**（`npm run test` 进 CI），加上 P1-5-1/P1-5-2 留下的两个 **Python 侧**守门测试（排版、类型契约）。**但 jsdom 不是浏览器**：`:focus-visible` 的匹配语义、真实点击与真实渲染、屏幕阅读器实际播报都没有自动化手段，属 P2-6 Playwright。
 4. **保留策略从未在真实默认配置下开启运行过**（默认关闭）。
 5. **已知功能边界**（有意设计，不是漏项）：`138-0013-8000` 这类带分隔符的手机号不会被脱敏命中；`AgentStep.arguments_summary` 等的原始文本不入库（只存长度/计数）；历史列表不返回 `total`（用游标判断是否还有下一页）。
 6. **测试侧的已知边界**（P1-4-1 记账时确认，详见 `docs/测试对照-设计文档章节.md` 第 5 节）：① 设计文档 §17.2 案例 7 写的是"服务状态工具超时"，但 `get_service_status` 是进程内 mock、没有 I/O，所以**不可复现**，现用检索超时（`RAG_TIMEOUT`）覆盖其意图，真实 provider 属 P2-5；② `analyze_log` 的 `MAX_MATCHED_TEXT = 120` 在现有 4 个正则下**不可达**（最长命中 11 字符），属防御性代码、无法构造用例。
+7. **P1-5-3 自己留下的边界**：① 焦点陷阱只处理 Tab/Shift+Tab，没有用 `inert`/`aria-hidden` 把抽屉背后的内容整体摘出可访问性树（`aria-modal="true"` 已表达模态语义）；② 测试只断言"可访问性契约正确"（角色/名称/live region/焦点位置），**不证明屏幕阅读器真的念对了**——那需要真实的辅助技术，不在自动化范围内。
 
 ---
 
@@ -365,10 +381,14 @@ P1-5-2 新增可写：
 
 - 把"手写前端类型与后端契约的漂移"变成 CI 门禁：先用探针量出真实载荷，发现根因不是缺几个字段，而是 `POST /analyze` 与 `GET /runs/{id}` 对同一次运行的 5 条步骤返回了 **4 种形状**（泄漏内部耗时起点 `_started_at` 与 `ok`/`attempts`，且缺 `step_index`，而前端正拿它当列表 key）；于是抽出唯一的步骤投影让两个接口同形状，再以 OpenAPI schema + 真实载荷（真实 Graph + 落库往返）双向比对 17 个手写 TS 接口（字段集合 / 可空性 / 枚举 / 可选性），零新依赖接入 CI。
 
+P1-5-3 新增可写：
+
+- 为前端补上自动化测试与无障碍支持：引入 Vitest + `@vue/test-utils` + jsdom 并接入 CI（50 条用例覆盖 store 状态机、模态抽屉的 ESC/焦点陷阱/焦点归还、表单错误播报与 `aria-live`），把此前只靠手跑脚本验证的时间工具纳入回归；用 postcss 解析真实样式表守住 `:focus-visible` 与 `prefers-reduced-motion`，并用 `@vue/server-renderer` 的 SSR 产物验证无障碍属性确实出现在渲染结果里；过程中发现并修掉一个真实缺陷——ESC 监听器注册在 `await` 之后，导致对话框刚打开时关不掉。
+
 **仍不能写成"已实现"**：SSE 流式分析、真实监控 provider、Redis、MCP、多 Agent、自动修复、高并发、真实准确率、生产上线规模。
 
 ---
 
 ## 12. 给新会话的第一句话建议
 
-> 读 `docs/项目交接文档-DeepSeek.md` 和 `docs/项目补充优化.md`，用户已定顺序 **A → B → C**：A（P1-6-1 知识库下拉选择）、B（P1-4-1 补测试、P1-4-5 CI 变绿并确认）与 **C 的前两步 P1-5-1（7 个前端文件压行拆分，`39f1fe2`）、P1-5-2（前后端类型统一 + 步骤契约只有一份，`730268d`）** 都已完成推送。下一步是 **C 的第三步：P1-5-3 前端测试与可访问性**（引入 Vitest/组件测试，补 `:focus-visible`、`role=dialog`/ESC/焦点管理、`aria-live`、`prefers-reduced-motion`），然后 P1-5-4 ~ P1-5-6。按约定：一次一项、实现+测试+推送齐了才打勾、不跳项、不用 `git add .`，每项都要做反证并写完成记录。
+> 读 `docs/项目交接文档-DeepSeek.md` 和 `docs/项目补充优化.md`，用户已定顺序 **A → B → C**：A（P1-6-1 知识库下拉选择）、B（P1-4-1 补测试、P1-4-5 CI 变绿并确认）与 **C 的前三步 P1-5-1（7 个前端文件压行拆分，`39f1fe2`）、P1-5-2（前后端类型统一 + 步骤契约只有一份，`730268d`）、P1-5-3（Vitest 50 条进 CI + 键盘可达，`b0400fe`）** 都已完成推送。下一步是 **C 的第四步：P1-5-4 统一 401 处理并区分网络故障**（响应拦截器按 HTTP 状态处理 401、保留 redirect；后端不可达只提示、不强制退出；注意 `auth.restore()` 现在任何异常都清 Token），然后 P1-5-5、P1-5-6。按约定：一次一项、实现+测试+推送齐了才打勾、不跳项、不用 `git add .`，每项都要做反证并写完成记录。
