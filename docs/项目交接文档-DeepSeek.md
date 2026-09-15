@@ -97,7 +97,7 @@ GitHub 账号     : 3262253821
 | P1-4-2 | 全仓 ruff 清零并把 CI 门禁扩到全仓 | `0f67b91` |
 | P1-4-3 | `.gitignore` 补齐（隐私与临时文件） | `062ee69` |
 | P1-4-4 | 锁定依赖（`requirements-lock.txt` 62 个精确版本 + `requirements-dev.txt`） | `32ed023` |
-| P1-6-1 | 知识库由手填 ID 改为**登录后自动加载的下拉**；新增 Agent 只读代理端点 `GET /api/v1/knowledge-bases`（Token 原样转发、响应只下发 `id`/`name`/`description`、上游 401/404/5xx/超时归一化）；提交前字段级校验（空值不再变 `NaN`）。**清单外新增项**（已在 `docs/项目补充优化.md` 补编号） | 见 12.6 |
+| P1-6-1 | 知识库由手填 ID 改为**登录后自动加载的下拉**；新增 Agent 只读代理端点 `GET /api/v1/knowledge-bases`（Token 原样转发、响应只下发 `id`/`name`/`description`、上游 401/404/5xx/超时归一化）；提交前字段级校验（空值不再变 `NaN`）。**清单外新增项**（已在 `docs/项目补充优化.md` 补编号） | `cdbd7db` |
 
 详细完成记录（改了什么文件、怎么验证、反证结果、是否影响迁移/API/前端、简历可用事实）都在 `docs/项目补充优化.md` 对应条目下。
 
