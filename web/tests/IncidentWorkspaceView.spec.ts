@@ -139,7 +139,7 @@ describe('IncidentWorkspaceView accessibility', () => {
     wrapper.unmount()
   })
 
-  it('打开历史抽屉走的是 AppLayout 里的触发按钮，关闭后焦点回到它', async () => {
+  it('打开历史抽屉走的是侧栏里的触发按钮，关闭后焦点回到它', async () => {
     const wrapper = await mountWorkspace()
     const trigger = wrapper.get('.rail-nav button[aria-label="运行历史"]')
 
@@ -148,11 +148,12 @@ describe('IncidentWorkspaceView accessibility', () => {
     ;(trigger.element as HTMLElement).focus()
     await trigger.trigger('click')
     await flushPromises()
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
-    // 抽屉自己把焦点移进第一条记录。
-    expect((document.activeElement as HTMLElement).className).toContain('history-row')
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(dialog.exists()).toBe(true)
+    // 抽屉自己把焦点移进对话框容器。
+    expect(document.activeElement).toBe(dialog.element)
 
-    await wrapper.get('[role="dialog"] .icon-button').trigger('click')
+    await dialog.get('.icon-button').trigger('click')
     await flushPromises()
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
     // 焦点必须回到那个触发按钮，而不是掉回 <body>。
@@ -265,7 +266,9 @@ describe('IncidentWorkspaceView 历史筛选与重跑（P1-5-5）', () => {
     await flushPromises()
 
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
-    expect((wrapper.get('input[type="text"], .incident-form input').element as HTMLInputElement).value).toBe(
+    // 用标题输入框的唯一 id 取，而不是 `input[type="text"]`：后者会随侧栏新增
+    // 控件而选错元素，断言就悄悄测了别的东西。
+    expect((wrapper.get('#incident-title').element as HTMLInputElement).value).toBe(
       '网关 502 复盘',
     )
     const notice = wrapper.get('.prefill-note').text()

@@ -17,7 +17,12 @@ const password = ref('')
     <h2>进入故障分析台</h2>
     <p>使用 DevAtlas 账号登录，Agent 会沿用你的知识库权限。</p>
     <form @submit.prevent="emit('submit', username, password)">
-      <label>用户名<input v-model="username" autocomplete="username" required placeholder="输入 DevAtlas 用户名" /></label>
+      <label>用户名<input
+        v-model="username"
+        autocomplete="username"
+        required
+        placeholder="输入 DevAtlas 用户名"
+      /></label>
       <label>密码<input
         v-model="password"
         type="password"

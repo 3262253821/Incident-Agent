@@ -93,7 +93,12 @@ function submit() {
         注意模板空白是有语义的（P1-5-1/§9-14）：`<input>` 与 `<p>` 相邻且分行时，
         `whitespace: 'condense'` 会把换行吃掉，所以 `p` 写在标签**内部**、与 input 换行。
       -->
-      <label>故障标题<input v-model="title" maxlength="200" required /><p
+      <label>故障标题<input
+        id="incident-title"
+        v-model="title"
+        maxlength="200"
+        required
+      /><p
         v-if="serverFieldErrors.fields.title"
         class="form-error field-inline"
         role="alert"

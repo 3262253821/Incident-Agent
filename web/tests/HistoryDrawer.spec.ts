@@ -56,7 +56,7 @@ describe('HistoryDrawer accessibility', () => {
     wrapper.unmount()
   })
 
-  it('打开后焦点进入抽屉的第一条记录（不是留在背后的表单上）', async () => {
+  it('打开后焦点进入抽屉（不是留在背后的表单上）', async () => {
     const trigger = document.createElement('button')
     trigger.textContent = '运行历史'
     document.body.appendChild(trigger)
@@ -65,7 +65,11 @@ describe('HistoryDrawer accessibility', () => {
     const wrapper = mountDrawer()
     await wrapper.vm.$nextTick()
 
-    expect(document.activeElement).toBe(wrapper.findAll('.history-row')[0].element)
+    // 焦点落在**对话框容器**上（`tabindex="-1"`），不是直接跳到第一条记录：
+    // 焦点进入 `role="dialog"` 时读屏会先念出 `aria-labelledby` 的标题，
+    // 用户先知道"这是运行历史对话框"，再决定往哪走。
+    expect(document.activeElement).toBe(wrapper.get('[role="dialog"]').element)
+    expect(wrapper.get('[role="dialog"]').attributes('aria-labelledby')).toBe('history-drawer-title')
 
     wrapper.unmount()
   })
@@ -102,9 +106,20 @@ describe('HistoryDrawer accessibility', () => {
     last.focus()
     expect(document.activeElement).toBe(last)
 
+    // 循环的接驳点是**对话框容器**（`tabindex="-1"`，不在自然 Tab 顺序里）：
+    // 最后一个控件再按 Tab 先回到容器，容器上再按 Tab 才落到第一个控件。
+    // 这样读屏在"绕回来"时能重念一次对话框标题，用户不会突然不知道自己在哪。
+    const dialog = wrapper.get('[role="dialog"]').element as HTMLElement
+    pressKey('Tab')
+    expect(document.activeElement).toBe(dialog)
+
     pressKey('Tab')
     expect(document.activeElement).toBe(wrapper.get('.icon-button').element)
 
+    pressKey('Tab', true)
+    expect(document.activeElement).toBe(dialog)
+
+    // Shift+Tab 从容器反向走回最后一个控件，循环闭合。
     pressKey('Tab', true)
     expect(document.activeElement).toBe(last)
 

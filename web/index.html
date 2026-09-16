@@ -3,8 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101315" />
-    <title>Signal Room | Incident Agent</title>
+    <!-- 与「干净明亮」皮肤的白底一致：移动端浏览器地址栏不会在浅色页面上变黑。 -->
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Incident Agent —— 可追溯的证据、可执行的排查顺序。" />
+    <!--
+      favicon 内联成 data URI 而不是新增一个文件：图形与 `BrandMark.vue` 保持同一份
+      （盾牌 + 告警脉冲），改一处不会出现"页签和侧栏不是同一个 logo"。
+    -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 2.6 L20 5.6 V11.2 C20 16.1 16.6 19.8 12 21.4 C7.4 19.8 4 16.1 4 11.2 V5.6 Z' stroke='%234176e6' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M6.6 11.6 H9.2 L10.7 8.5 L13 14.7 L14.6 11.6 H17.4' stroke='%234176e6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <title>Incident Agent</title>
   </head>
   <body>
     <div id="app"></div>

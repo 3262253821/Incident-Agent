@@ -41,6 +41,8 @@ const panel = ref<HTMLElement | null>(null)
  * `<body>`，下一次 Tab 从页面开头重新开始（P1-5-3）。
  */
 const restoreFocusTo = ref<HTMLElement | null>(null)
+/** 打开前的 `body.style.overflow`，关闭时原样还回去（不假设它一定是空串）。 */
+const bodyOverflow = ref('')
 /** 筛选控件是受控的：切换后立刻把新值抛给父组件，由父组件重新拉第一页。 */
 const statusFilter = ref<StatusFilter>(props.statusFilter)
 const timeRange = ref<TimeRangeFilter>(props.timeRange)
@@ -75,8 +77,25 @@ function focusableElements(): HTMLElement[] {
 }
 
 /**
+ * 对话框容器自己也是可聚焦的（`tabindex="-1"`），但**不进这个列表**：它不参与
+ * 自然 Tab 顺序，而是焦点循环的接驳点（见 `onKeydown`）。
+ */
+
+/**
  * 焦点陷阱：不把焦点留在抽屉里的话，Tab 会跑到抽屉背后的表单上——
  * 视觉上"抽屉挡着"，键盘上却还在操作被遮住的界面。
+ */
+/**
+ * Tab 循环（焦点陷阱）。
+ *
+ * 三种情况，缺一种都会漏出去：
+ *
+ * 1. 焦点在容器本身（刚打开时就在这里）：Tab 进第一个控件、Shift+Tab 进最后一个；
+ * 2. 焦点在最后一个控件上：Tab 回到容器（容器不参与顺序 Tab，它是循环的"第 0 站"）；
+ * 3. 焦点已经不在抽屉里（例如鼠标点了别处再按 Tab）：按当前方向拉回来。
+ *
+ * 注意 `.history-drawer` 有 `tabindex="-1"`，所以它**可以**被聚焦，但不在自然
+ * Tab 顺序里——这正是循环要用它当接驳点的原因。
  */
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
@@ -86,30 +105,48 @@ function onKeydown(event: KeyboardEvent) {
   }
   if (event.key !== 'Tab') return
 
+  const root = panel.value
   const elements = focusableElements()
   const first = elements[0]
   const last = elements[elements.length - 1]
-  if (!first || !last) {
-    // 没有任何可聚焦元素时不能让 Tab 漏出去。
+  // 没有任何可聚焦元素时不能让 Tab 漏出去（此时容器是唯一的落点）。
+  if (!root || !first || !last) {
     event.preventDefault()
+    root?.focus()
     return
   }
+
   const active = document.activeElement as HTMLElement | null
-  if (event.shiftKey && (active === first || !panel.value?.contains(active))) {
+  if (active === root) {
     event.preventDefault()
-    last.focus()
+    ;(event.shiftKey ? last : first).focus()
+    return
+  }
+  if (!root.contains(active)) {
+    event.preventDefault()
+    ;(event.shiftKey ? last : first).focus()
+    return
+  }
+  if (event.shiftKey && active === first) {
+    event.preventDefault()
+    root.focus()
     return
   }
   if (!event.shiftKey && active === last) {
     event.preventDefault()
-    first.focus()
+    root.focus()
   }
 }
 
+/**
+ * 打开时把焦点落进对话框。
+ *
+ * 优先落在**对话框容器本身**（`tabindex="-1"`）：焦点进入一个 `role="dialog"` 时，
+ * 读屏会先念出 `aria-labelledby` 指向的标题（"运行历史，对话框"），用户先知道
+ * "这是什么"，再决定往哪走。只有当容器缺失时才退回第一个可聚焦元素。
+ */
 function focusInitialElement() {
-  const preferred =
-    panel.value?.querySelector<HTMLElement>('.history-row') ?? focusableElements()[0]
-  ;(preferred ?? panel.value)?.focus()
+  ;(panel.value ?? focusableElements()[0])?.focus()
 }
 
 onMounted(async () => {
@@ -117,6 +154,9 @@ onMounted(async () => {
   // `await nextTick()` 解开之前到达的 ESC 会完全丢失——组件测试里表现为
   // "挂了监听却收不到事件"，真实环境里是"抽屉刚打开就按 ESC 关不掉"。
   window.addEventListener('keydown', onKeydown)
+  // 模态层下面还压着一整页可滚动内容，锁住 body 才不会出现"滚的是背后的页面"。
+  bodyOverflow.value = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
   restoreFocusTo.value = (document.activeElement as HTMLElement | null) ?? null
   // 等列表渲染完再落焦点，否则第一行还不存在。
   await nextTick()
@@ -125,6 +165,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = bodyOverflow.value
   const target = restoreFocusTo.value
   restoreFocusTo.value = null
   // 触发器可能已随界面消失（例如跳转了路由），此时不能强行 focus。
@@ -169,94 +210,103 @@ function runFailureKind(run: RunSummary) {
 </script>
 
 <template>
-  <div
-    ref="panel"
-    class="history-drawer"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="history-drawer-title"
-    tabindex="-1"
-  >
-    <div class="drawer-heading">
-      <div>
-        <span class="section-kicker">RECENT RUNS</span>
-        <h3 id="history-drawer-title">运行历史</h3>
-      </div>
-      <button
-        class="icon-button"
-        title="关闭历史"
-        aria-label="关闭历史"
-        @click="emit('close')"
-      >
-        <X :size="18" />
-      </button>
-    </div>
-    <!--
-      筛选（P1-5-5）。两个 select 而不是一排状态标签：后端只认精确状态值，
-      而用户想说的是"只看失败的"，所以这里做成"结果档位 + 时间档位"两组。
-    -->
-    <div class="drawer-filters">
-      <label>
-        <span class="sr-only">{{ STATUS_FILTER_LABEL }}</span>
-        <select v-model="statusFilter" :aria-label="STATUS_FILTER_LABEL" @change="onStatusFilterChange">
-          <option value="all">全部</option>
-          <option value="failed">仅失败</option>
-          <option value="completed">仅成功</option>
-        </select>
-      </label>
-      <label>
-        <span class="sr-only">{{ TIME_FILTER_LABEL }}</span>
-        <select v-model="timeRange" :aria-label="TIME_FILTER_LABEL" @change="onTimeRangeChange">
-          <option value="all">不限时间</option>
-          <option value="24h">最近 24 小时</option>
-          <option value="7d">最近 7 天</option>
-          <option value="30d">最近 30 天</option>
-        </select>
-      </label>
-    </div>
+  <!--
+    模态遮罩：把抽屉从"浮在右上角的一块面板"变成真正的对话框。
+    点遮罩空白处关闭——但点在抽屉内部不会关（`self` 修饰符只在遮罩本身被点时触发）。
+  -->
+  <div class="drawer-overlay" @click.self="emit('close')">
     <div
-      v-for="item in runs"
-      :key="item.run_id"
-      class="history-row-wrap"
+      ref="panel"
+      class="history-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="history-drawer-title"
+      tabindex="-1"
     >
-      <button
-        class="history-row"
-        @click="emit('select', item)"
-      >
-        <span class="history-status" :class="[runTone(item), item.status]"></span>
-        <span>
-          <strong>{{ item.title }}</strong>
-          <small>{{ runLabel(item) }} · {{ runFailureKind(item) }} · {{ runTiming(item) }}</small>
-          <small>{{ runCounts(item) }} · {{ item.run_id.slice(0, 8) }}</small>
-          <!-- 失败原因单独一行：它是用户打开抽屉最想看的东西。 -->
-          <small v-if="runFailure(item)" class="history-failure">{{ runFailure(item) }}</small>
-        </span>
-        <ArrowRight :size="16" />
-      </button>
+      <div class="drawer-heading">
+        <div>
+          <span class="section-kicker">RECENT RUNS</span>
+          <h3 id="history-drawer-title">运行历史</h3>
+        </div>
+        <button
+          class="icon-button"
+          title="关闭历史"
+          aria-label="关闭历史"
+          @click="emit('close')"
+        >
+          <X :size="18" />
+        </button>
+      </div>
       <!--
-        「重跑」只复用摘要里真实存在的字段（标题 + 知识库）。原始日志与 top_k
-        不在摘要/详情契约里，所以父组件会提示用户补填，见 utils/failingRun.ts。
-        它与整行是**兄弟**而不是嵌套（嵌套按钮在 HTML 里非法）；`.stop` 只是让
-        点击不再往上冒给抽屉容器，不是"防止打开详情"——那条链路由兄弟结构保证
-        （E2 反证实测：去掉 `.stop` 后相关用例仍然全绿）。
+        筛选（P1-5-5）。两个 select 而不是一排状态标签：后端只认精确状态值，
+        而用户想说的是"只看失败的"，所以这里做成"结果档位 + 时间档位"两组。
       -->
-      <button
-        class="history-rerun"
-        :aria-label="`用「${item.title}」重跑`"
-        title="按这条记录的知识库与标题重新分析"
-        @click.stop="emit('rerun', item)"
-      >
-        <RotateCcw :size="14" /> 重跑
-      </button>
+      <div class="drawer-filters">
+        <label>
+          <span class="sr-only">{{ STATUS_FILTER_LABEL }}</span>
+          <select v-model="statusFilter" :aria-label="STATUS_FILTER_LABEL" @change="onStatusFilterChange">
+            <option value="all">全部</option>
+            <option value="failed">仅失败</option>
+            <option value="completed">仅成功</option>
+          </select>
+        </label>
+        <label>
+          <span class="sr-only">{{ TIME_FILTER_LABEL }}</span>
+          <select v-model="timeRange" :aria-label="TIME_FILTER_LABEL" @change="onTimeRangeChange">
+            <option value="all">不限时间</option>
+            <option value="24h">最近 24 小时</option>
+            <option value="7d">最近 7 天</option>
+            <option value="30d">最近 30 天</option>
+          </select>
+        </label>
+      </div>
+      <!-- 列表区独立滚动：翻到第 30 条时标题与筛选仍然固定可见。 -->
+      <div class="drawer-list">
+        <div
+          v-for="item in runs"
+          :key="item.run_id"
+          class="history-row-wrap"
+        >
+          <button
+            class="history-row"
+            @click="emit('select', item)"
+          >
+            <span class="history-status" :class="[runTone(item), item.status]"></span>
+            <span>
+              <strong>{{ item.title }}</strong>
+              <small>{{ runLabel(item) }} · {{ runFailureKind(item) }} · {{ runTiming(item) }}</small>
+              <small>{{ runCounts(item) }} · {{ item.run_id.slice(0, 8) }}</small>
+              <!-- 失败原因单独一行：它是用户打开抽屉最想看的东西。 -->
+              <small v-if="runFailure(item)" class="history-failure">{{ runFailure(item) }}</small>
+            </span>
+            <ArrowRight :size="16" />
+          </button>
+          <!--
+            「重跑」只复用摘要里真实存在的字段（标题 + 知识库）。原始日志与 top_k
+            不在摘要/详情契约里，所以父组件会提示用户补填，见 utils/failingRun.ts。
+            它与整行是**兄弟**而不是嵌套（嵌套按钮在 HTML 里非法）；`.stop` 只是让
+            点击不再往上冒给抽屉容器，不是"防止打开详情"——那条链路由兄弟结构保证
+            （E2 反证实测：去掉 `.stop` 后相关用例仍然全绿）。
+          -->
+          <button
+            class="history-rerun"
+            :aria-label="`用「${item.title}」重跑`"
+            title="按这条记录的知识库与标题重新分析"
+            @click.stop="emit('rerun', item)"
+          >
+            <RotateCcw :size="14" /> 重跑
+          </button>
+        </div>
+        <p v-if="!runs.length" class="drawer-empty">当前筛选下暂时没有运行记录。</p>
+        <button
+          v-if="runs.length && hasMore"
+          class="history-more"
+          :disabled="loadingMore"
+          @click="emit('loadMore')"
+        >
+          {{ loadingMore ? '加载中…' : '加载更多' }}
+        </button>
+      </div>
     </div>
-    <p v-if="!runs.length" class="drawer-empty">当前筛选下暂时没有运行记录。</p>
-    <button
-      v-if="runs.length && hasMore"
-      class="history-more"
-      :disabled="loadingMore"
-      @click="emit('loadMore')"
-    >
-      {{ loadingMore ? '加载中…' : '加载更多' }}
-    </button>
   </div>
 </template>

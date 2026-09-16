@@ -148,8 +148,20 @@ describe('styles.css 的可访问性层', () => {
   it('键盘焦点可见：`:focus-visible` 带真实可见的 outline', () => {
     expectRule(postcss.parse(stylesCss), {
       selector: [':focus-visible'],
-      declaration: 'outline: 2px solid #b7ff5f',
+      declaration: 'outline: 2px solid',
       note: '键盘焦点环',
+    })
+  })
+
+  /**
+   * 焦点环必须是**品牌强调色**，不能退化成浏览器默认（`auto`）或某个说不清来源的
+   * 硬编码色。改皮肤时最容易漏的就是这里：`outline: 2px solid` 还在，颜色却没了。
+   */
+  it('焦点环的颜色来自品牌令牌 `--ia-focus`', () => {
+    expectRule(postcss.parse(stylesCss), {
+      selector: [':focus-visible'],
+      declaration: 'outline: 2px solid var(--ia-focus)',
+      note: '焦点环颜色',
     })
   })
 
@@ -235,7 +247,7 @@ describe('测试自身的反证：规则抓得到真实的缺失', () => {
     expect(() =>
       expectRule(postcss.parse('.a { color: red; }'), {
         selector: [':focus-visible'],
-        declaration: 'outline: 2px solid #b7ff5f',
+        declaration: 'outline: 2px solid var(--ia-focus)',
         note: '键盘焦点环',
       }),
     ).toThrow()
@@ -243,9 +255,9 @@ describe('测试自身的反证：规则抓得到真实的缺失', () => {
 
   it('焦点环写在规则里但没有 outline 值（只剩颜色变化）也会失败', () => {
     expect(() =>
-      expectRule(postcss.parse(':focus-visible { color: #b7ff5f; }'), {
+      expectRule(postcss.parse(':focus-visible { color: var(--ia-focus); }'), {
         selector: [':focus-visible'],
-        declaration: 'outline: 2px solid #b7ff5f',
+        declaration: 'outline: 2px solid var(--ia-focus)',
         note: '键盘焦点环',
       }),
     ).toThrow()
